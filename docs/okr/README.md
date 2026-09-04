@@ -18,7 +18,7 @@ npx -y --no-audit skills add RoacherM/Wayne-Skills -s okr -s okr-executor -g -y 
 okr tui --demo                                                         # 先用示例数据看看
 ```
 
-仓库里还有别的 skill（见 `skills/README.md`），`-s '*'` 全装，`-l` 只列不装。装到 `~/.agents/skills/<name>`：Codex / Copilot / OpenCode 直接读这个目录，Claude Code 由 `~/.claude/skills/<name>` 软链过去。要 Gemini 就再加 `-a gemini-cli`。更新时 CLI 重跑 `npm install -g github:RoacherM/Wayne-Skills`，skill 跑 `npx -y --no-audit skills update`（`--no-audit`：首次拉包时 npm audit 在某些网络下会静默挂住）。agent 用 `okr protocol` 读协议，不依赖仓库路径。
+仓库里还有别的 skill（见 `skills/README.md`），`-s '*'` 全装，`-l` 只列不装。装到 `~/.agents/skills/<name>`：Codex / Copilot / OpenCode 直接读这个目录，Claude Code 由 `~/.claude/skills/<name>` 软链过去。要 Gemini 就再加 `-a gemini-cli`。更新时 CLI 重跑 `npm install -g github:RoacherM/Wayne-Skills`，skill 跑 `npx -y --no-audit skills update -g`（`--no-audit`：首次拉包时 npm audit 在某些网络下会静默挂住）。agent 用 `okr protocol` 读协议，不依赖仓库路径。
 
 本地开发：
 

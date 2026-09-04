@@ -16,7 +16,7 @@ npx -y --no-audit skills add RoacherM/Wayne-Skills -s okr -s okr-executor -g -y 
 npm install -g github:RoacherM/Wayne-Skills                                     # okr CLI（Node ≥ 23.6，无构建步骤）
 ```
 
-skill 装到 `~/.agents/skills/<name>`：Codex / Copilot / OpenCode 直接读这个目录，Claude Code 由 `~/.claude/skills/<name>` 软链过去（`-a codex` 不会在 `~/.codex` 下建任何东西）；要 Gemini 就加 `-a gemini-cli`。更新：skill 跑 `npx -y --no-audit skills update`，CLI 重跑 `npm install -g`。`--no-audit` 是因为首次拉 `skills` 包时 npm 的 audit 请求在某些网络下会静默挂住几分钟。
+skill 装到 `~/.agents/skills/<name>`：Codex / Copilot / OpenCode 直接读这个目录，Claude Code 由 `~/.claude/skills/<name>` 软链过去（`-a codex` 不会在 `~/.codex` 下建任何东西）；要 Gemini 就加 `-a gemini-cli`。更新：skill 跑 `npx -y --no-audit skills update -g`，CLI 重跑 `npm install -g`。`--no-audit` 是因为首次拉 `skills` 包时 npm 的 audit 请求在某些网络下会静默挂住几分钟。
 
 ## okr
 
