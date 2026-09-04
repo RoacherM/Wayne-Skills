@@ -5,13 +5,13 @@ description: "通过 okr CLI 替用户记录目标 / KR / 任务 / 习惯的进�
 
 # okr
 
-用户的目标与任务追踪在 `~/.okr`，命令行工具 `okr`（仓库 github.com/RoacherM/Wayne-Skills，本 skill 在其 `skills/okr/`）。规则全部在协议文档里，先读它再动手：
+用户的目标与任务追踪在 `~/.okr`，命令行工具 `okr` 就在本 skill 目录的 `scripts/okr.js`（单文件，Node ≥ 20；仓库 github.com/RoacherM/Wayne-Skills）。下文所有 `okr …` 都指：PATH 上有 `okr` 就用它，否则 `node <本 skill 目录>/scripts/okr.js …`。规则全部在协议文档里，先读它再动手：
 
 ```bash
 okr protocol
 ```
 
-没有 `okr` 命令：`npm install -g github:RoacherM/Wayne-Skills`（Node ≥ 23.6，第一次运行 okr 会自动装上本 skill）。没有 `~/.okr/nodes.yaml`：问用户是否 `okr init`，旧 `goals.yaml` 走 `okr migrate`。
+没有 `~/.okr/nodes.yaml`：问用户是否 `okr init`，旧 `goals.yaml` 走 `okr migrate`。
 
 ## 本 skill 固定的事
 

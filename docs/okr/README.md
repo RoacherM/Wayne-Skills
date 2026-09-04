@@ -10,20 +10,20 @@
 
 ## 安装
 
-需要 Node ≥ 23.6，TypeScript 由 Node 原生剥离，没有构建步骤。
+打包好的 CLI（skill 里的 `scripts/okr.js`）只要 Node ≥ 20；从源码跑（仓库 checkout、`npm link`）要 Node ≥ 23.6，TypeScript 由 Node 原生剥离。
 
 ```bash
-npm install -g github:RoacherM/Wayne-Skills   # 装 CLI；skill 在第一次运行 okr 时自动装上，更新重跑同一条
-okr skill status                               # 看 skill 装到哪了
-okr tui --demo                                 # 先用示例数据看看
+npx -y --no-audit skills add RoacherM/Wayne-Skills -s okr -g -y -a claude-code -a codex   # 装 skill，CLI 打包在 skill 的 scripts/okr.js 里（Node ≥ 20），-a 选 agent
+node ~/.agents/skills/okr/scripts/okr.js skill link                                        # 想在终端敲 okr：软链到 ~/.local/bin
+okr tui --demo                                                                             # 先用示例数据看看
 ```
 
-任意 `okr` 命令运行时会检查 skill：没有就把 `skills/okr` 复制到 `~/.agents/skills/okr`（Codex / Copilot / OpenCode 直接读），并建软链 `~/.claude/skills/okr`（Claude Code）；是自己装的拷贝（带 `.wayne-skills` 戳记）且包里的 skill 变了就更新；软链或别人装的目录不碰。手动：`okr skill install [--force]` / `remove` / `status`；`OKR_SKIP_SKILL=1` 关掉自动安装（不用 npm postinstall 是因为 npm 11 会把带安装脚本的 git 全局包装成指向临时 clone 的软链）。要 Gemini 之类别的 agent，用 skills CLI：`npx -y --no-audit skills add RoacherM/Wayne-Skills -s okr -g -y -a gemini-cli`（`--no-audit`：首次拉包时 npm audit 在某些网络下会静默挂住）。agent 用 `okr protocol` 读协议，不依赖仓库路径。
+另一条路是 `npm install -g github:RoacherM/Wayne-Skills`（`okr` 进 PATH，更新重跑同一条）：任意 `okr` 命令运行时会检查 skill，没有就把 `skills/okr` 复制到 `~/.agents/skills/okr`（Codex / Copilot / OpenCode 直接读），并建软链 `~/.claude/skills/okr`（Claude Code）；是自己装的拷贝（带 `.wayne-skills` 戳记）且包里的 skill 变了就更新；软链或别人装的目录不碰。手动：`okr skill install [--force]` / `remove` / `status`；`OKR_SKIP_SKILL=1` 关掉自动安装（不用 npm postinstall 是因为 npm 11 会把带安装脚本的 git 全局包装成指向临时 clone 的软链）。别的 agent 就在 skills CLI 那条命令里多加 `-a gemini-cli` 之类（`--no-audit`：首次拉包时 npm audit 在某些网络下会静默挂住）。agent 用 `okr protocol` 读协议，不依赖仓库路径。
 
 本地开发：
 
 ```bash
-git clone https://github.com/RoacherM/Wayne-Skills ~/Desktop/Projects/sides/wayne-skills && cd ~/Desktop/Projects/sides/wayne-skills && npm install && npm link   # 覆盖 npm install -g 装的那份，回发布版重跑 npm install -g
+git clone https://github.com/RoacherM/Wayne-Skills ~/Desktop/Projects/sides/wayne-skills && cd ~/Desktop/Projects/sides/wayne-skills && npm install && npm link   # okr 指向源码（Node ≥ 23.6）；覆盖 npm install -g 装的那份，回发布版重跑 npm install -g。改了 src/ 或 PROTOCOL.md 后 npm run build 重新打包 skills/okr/scripts/okr.js
 rm -rf ~/.agents/skills/okr && ln -s ~/Desktop/Projects/sides/wayne-skills/skills/okr ~/.agents/skills/okr && okr skill install   # skill 用软链，改 SKILL.md 即生效；install 只补 Claude Code 软链
 npm test && npm run typecheck
 okr tree --demo && okr show kr1.2 --spec --demo   # 派工包长什么样

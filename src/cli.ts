@@ -8,7 +8,7 @@ import { MigrateError, migrate } from './migrate.ts';
 import { descendants, isAncestor, matchNode, newId, project, specComplete, takenIds, velocity } from './project.ts';
 import type { Tree } from './project.ts';
 import * as store from './store.ts';
-import { ensureSkill, installSkill, removeSkill, skillPaths } from './skill.ts';
+import { ensureSkill, installSkill, linkCli, removeSkill, skillPaths } from './skill.ts';
 import { runTui } from './tui.ts';
 import { KIND_LABEL, STAGE_LABEL } from './types.ts';
 import type { Event, EventType, Node, NodeKind, NodeState, Priority, Spec } from './types.ts';
@@ -57,13 +57,17 @@ const json = args.flags.json === true;
 const demo = args.flags.demo === true;
 const cols = process.stdout.columns || 100;
 
-const PKG_VERSION: string = JSON.parse(readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '..', 'package.json'), 'utf8')).version;
+// scripts/build.mjs bakes these in; running from source falls back to the repo files.
+declare const __OKR_VERSION__: string | undefined;
+declare const __OKR_PROTOCOL__: string | undefined;
+const HERE = dirname(fileURLToPath(import.meta.url));
+const PKG_VERSION: string = typeof __OKR_VERSION__ === 'string' ? __OKR_VERSION__ : JSON.parse(readFileSync(resolve(HERE, '..', 'package.json'), 'utf8')).version;
 
 const KNOWN_FLAGS = new Set([
   'json', 'demo', 'today', 'by', 'session', 'confirmed', 'force', 'at', 'link', 'hours', 'body', 'repo', 'commit',
   'value', 'node', 'days', 'weeks', 'all', 'spec', 'merge-events', 'kind', 'name', 'area', 'parent', 'start', 'end',
   'weight', 'status', 'metric', 'unit', 'from', 'to', 'cadence', 'habit', 'priority', 'deadline', 'dep', 'deps',
-  'week', 'order', 'goal', 'accept', 'verify', 'reason', 'limit', 'help', 'version',
+  'week', 'order', 'goal', 'accept', 'verify', 'reason', 'limit', 'help', 'version', 'dir',
 ]);
 
 const str = (k: string): string | undefined => {
@@ -810,14 +814,19 @@ function cmdTui(): void {
 
 /** `okr protocol`: print PROTOCOL.md from the installed package so agents never need to know where the repo lives. */
 function cmdProtocol(): void {
-  const path = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'docs', 'okr', 'PROTOCOL.md');
-  if (!existsSync(path)) fail(`找不到 ${path}`);
-  const text = readFileSync(path, 'utf8');
+  let text: string;
+  let path = 'bundled';
+  if (typeof __OKR_PROTOCOL__ === 'string') text = __OKR_PROTOCOL__;
+  else {
+    path = resolve(HERE, '..', 'docs', 'okr', 'PROTOCOL.md');
+    if (!existsSync(path)) fail(`找不到 ${path}`);
+    text = readFileSync(path, 'utf8');
+  }
   if (json) console.log(JSON.stringify({ ok: true, path, protocol: text }));
   else process.stdout.write(text);
 }
 
-const SKILL_USAGE = '用法: okr skill install [--force] | remove | status';
+const SKILL_USAGE = '用法: okr skill install [--force] | remove | status | link [--dir ~/.local/bin]';
 
 const SKILL_ACTION: Record<string, string> = {
   copied: '已复制',
@@ -825,6 +834,7 @@ const SKILL_ACTION: Record<string, string> = {
   linked: '已建软链',
   kept: '软链已在',
   'skipped-dir': '是真实目录，不动',
+  'in-place': '就是这份，不动',
 };
 
 function cmdSkill(): void {
@@ -846,9 +856,16 @@ function cmdSkill(): void {
   } else if (sub === 'status') {
     const p = skillPaths();
     const st = (x: string) => (existsSync(x) ? '在' : '不在');
-    ok({ agents: p.agents, claude: p.claude, installed: existsSync(p.agents) }, () => {
+    ok({ agents: p.agents, claude: p.claude, installed: existsSync(p.agents), running: process.argv[1] }, () => {
       console.log(`${p.agents}  ${st(p.agents)}`);
       console.log(`${p.claude}  ${st(p.claude)}`);
+      console.log(dim(`当前运行的是 ${process.argv[1]}`));
+    });
+  } else if (sub === 'link') {
+    const r = linkCli({ dir: str('dir') });
+    ok({ ...r }, () => {
+      console.log(`${color(GREEN, '✓')} ${r.link} -> ${r.target}`);
+      if (!r.onPath) console.log(`${dim('·')} ${r.dir} 不在 PATH 里，加一句到 shell 配置：export PATH="${r.dir}:$PATH"`);
     });
   } else fail(SKILL_USAGE);
 }
@@ -863,7 +880,7 @@ function cmdHelp(): void {
       `${bold('数据')}   velocity [--weeks]`,
       `${bold('视图')}   tui · status · tree · show`,
       `${bold('协议')}   protocol（打印 PROTOCOL.md，agent 先读它再写）`,
-      `${bold('skill')}  skill install [--force] · remove · status（装进 ~/.agents/skills 与 ~/.claude/skills；每次运行 okr 会自动补装/更新，OKR_SKIP_SKILL=1 关掉）`,
+      `${bold('skill')}  skill install [--force] · remove · status · link（装进 ~/.agents/skills 与 ~/.claude/skills；运行时自动补装/更新自己装的那份，OKR_SKIP_SKILL=1 关掉；link 把 okr 软链到 ~/.local/bin）`,
       '',
       `${bold('通用')}   --json  --today YYYY-MM-DD  --at <时间>  --demo  --by <agent>  --session <id>  --confirmed  --force`,
       `${bold('退出码')} 0 成功 · 1 错误 · 2 指代歧义 · 3 守卫拒绝/validate 失败 · 4 锁超时`,

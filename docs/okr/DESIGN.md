@@ -160,7 +160,7 @@ drop: [t39]                 # 遗留任务退出本周，清空 week
 
 ## 4. Skill 职责
 
-agent 无关的协议文档 `PROTOCOL.md`，仓库内 `skills/okr`（给对话 agent；执行 agent 侧暂无单独 skill，2026-09-04 移除；CLI 第一次运行时自动装进 `~/.agents/skills` 并随包更新，也可 `npx skills add`；不走 npm postinstall，npm 11 对带安装脚本的 git 全局包会装成指向临时 clone 的软链）和 `AGENTS.okr.md`（给不支持 skill 的 agent 的片段）共用：
+agent 无关的协议文档 `PROTOCOL.md`，仓库内 `skills/okr`（给对话 agent；执行 agent 侧暂无单独 skill，2026-09-04 移除；skill 自带打包好的 CLI `scripts/okr.js`，`npx skills add` 装完即可用；`npm install -g` 那条路则由 CLI 第一次运行时自动装进 `~/.agents/skills` 并随包更新；不走 npm postinstall，npm 11 对带安装脚本的 git 全局包会装成指向临时 clone 的软链）和 `AGENTS.okr.md`（给不支持 skill 的 agent 的片段）共用：
 
 - 写之前先 `okr recent`，语义查重是 skill 的事，CLI 只挡字面相近。
 - 归属由 agent 判断，错了直接改。
@@ -190,7 +190,7 @@ derive → layout → paint。同一份 layout 三种输出：ANSI（TUI）、80
 ## 8. 开发顺序
 
 1. 数据模型：树、任务字段与 spec、事件新字段与新类型、两维度推导、上层进度推导与 assess 覆盖、守卫与锁、退出码、edit / move / rm、validate、migrate、repo 登记、velocity。
-2. `PROTOCOL.md` + 仓库内 `skills/okr`（CLI 首次运行自动装，也可 `npx skills add`；CLI 和 skill 一起并入 Wayne-Skills 仓库，取代旧的 okr skill）+ AGENTS.md 片段。
+2. `PROTOCOL.md` + 仓库内 `skills/okr`（skill 内置打包 CLI，`npx skills add` 即装；`npm install -g` 的 CLI 首次运行也会自动装 skill；CLI 和 skill 一起并入 Wayne-Skills 仓库，取代旧的 okr skill）+ AGENTS.md 片段。
 3. 计划数据命令：week / brief / candidates / velocity / commits / changes / apply / report data，plan.yaml 格式。
 4. 定时任务：launchd 日报（deliver notes）与周报，幂等与授权步骤。
 5. TUI：树看板、本周页、报告页；渲染层三种输出。

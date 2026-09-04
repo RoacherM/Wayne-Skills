@@ -8,15 +8,20 @@
 
 ## 安装
 
-一条命令，CLI 和 skill 一起装（Node ≥ 23.6，无构建步骤）：
+skill 自带打包好的 CLI（`skills/okr/scripts/okr.js`，单文件纯 JS，Node ≥ 20），用 [skills CLI](https://github.com/vercel-labs/skills) 装，`-a` 选自己用的 agent：
 
 ```bash
-npm install -g github:RoacherM/Wayne-Skills
+npx -y --no-audit skills add RoacherM/Wayne-Skills -s okr -g -y -a claude-code -a codex   # -a 可多个：gemini-cli、cursor、opencode…；不带 -a 进交互选择
+npx -y --no-audit skills update -g                                                          # 更新
 ```
 
-第一次运行任意 `okr` 命令时，CLI 把自带的 `okr` skill 复制到 `~/.agents/skills/okr`（Codex / Copilot / OpenCode 直接读这个目录），并给 Claude Code 建软链 `~/.claude/skills/okr`，stderr 提示一行。更新就重跑同一条命令，下次运行 `okr` 时自动把这份拷贝换成新版（只动自己装的那份：`~/.agents/skills/okr` 是软链或没有 `.wayne-skills` 戳记就不碰）。手动：`okr skill install`（`--force` 覆盖开发用的软链）、`okr skill remove`、`okr skill status`；`OKR_SKIP_SKILL=1` 关掉自动安装。之所以不用 npm 的 postinstall：npm 11 遇到带安装脚本的 git 包，会把全局安装做成指向临时 clone 的软链，装完即失效。
+装完 agent 直接跑 `node ~/.agents/skills/okr/scripts/okr.js …`（SKILL.md 里写了）。终端里想直接敲 `okr`：
 
-也可以用 [skills CLI](https://github.com/vercel-labs/skills) 装 skill（比如要 Gemini：`npx -y --no-audit skills add RoacherM/Wayne-Skills -s okr -g -y -a gemini-cli`；`--no-audit` 是因为首次拉包时 npm 的 audit 请求在某些网络下会静默挂几分钟）。两种方式装到同一个位置，后装的覆盖先装的。
+```bash
+node ~/.agents/skills/okr/scripts/okr.js skill link   # 软链到 ~/.local/bin/okr；--dir 换目录
+```
+
+另一条路，先要命令再要 skill：`npm install -g github:RoacherM/Wayne-Skills` 把 `okr` 放到 PATH 上，第一次运行时把 skill 复制到 `~/.agents/skills/okr` 并给 Claude Code 建软链 `~/.claude/skills/okr`（只装这两处；之后随包自动更新自己装的那份，`OKR_SKIP_SKILL=1` 关掉；`okr skill install | remove | status` 手动）。不用 npm postinstall 是因为 npm 11 会把带安装脚本的 git 全局包装成指向临时 clone 的软链。`--no-audit`：首次拉包时 npm 的 audit 请求在某些网络下会静默挂几分钟。
 
 ## okr
 
@@ -33,7 +38,8 @@ okr show kr1.2 --spec   # 派工包
 
 ```bash
 git clone https://github.com/RoacherM/Wayne-Skills ~/Desktop/Projects/sides/wayne-skills && cd ~/Desktop/Projects/sides/wayne-skills
-npm install && npm link                          # okr 指向仓库，改代码即生效；会覆盖 npm install -g 装的那份，回发布版重跑 npm install -g
+npm install && npm link                          # okr 指向仓库源码（跑源码要 Node ≥ 23.6），改代码即生效；会覆盖 npm install -g 装的那份，回发布版重跑 npm install -g
+npm run build                                    # 改了 src/ 或 PROTOCOL.md 后重新打包 skills/okr/scripts/okr.js，测试会检查它没过期
 npm test && npm run typecheck
 for s in ~/Desktop/Projects/sides/wayne-skills/skills/*/; do n=$(basename $s); rm -rf ~/.agents/skills/$n && ln -s $s ~/.agents/skills/$n; done   # skill 用软链，改 SKILL.md 即生效
 okr skill install                                # 只补 Claude Code 的软链；~/.agents/skills 里已是软链就不动，自动安装也不碰软链

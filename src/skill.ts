@@ -6,13 +6,16 @@
 // A postinstall hook would be the obvious place, but npm 11 links a global git install to its temp
 // clone whenever the package has install scripts, which breaks `npm install -g github:…`.
 import { createHash } from 'node:crypto';
-import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, join, relative, resolve } from 'node:path';
+import { delimiter, dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const SKILL_NAME = 'okr';
-export const SKILL_SRC = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'skills', SKILL_NAME);
+/** Set by scripts/build.mjs: the bundle lives at skills/okr/scripts/okr.js, so the skill is its parent directory. */
+declare const __OKR_BUNDLED__: boolean | undefined;
+const HERE = dirname(fileURLToPath(import.meta.url));
+export const SKILL_SRC = typeof __OKR_BUNDLED__ === 'boolean' && __OKR_BUNDLED__ ? resolve(HERE, '..') : resolve(HERE, '..', 'skills', SKILL_NAME);
 /** Written into the copy we install; its absence means the directory is not ours to update. */
 export const SKILL_STAMP = '.wayne-skills';
 
@@ -42,13 +45,22 @@ export function skillPaths(home = homedir()): SkillPaths {
 }
 
 export interface SkillInstallResult {
-  agents: { path: string; action: 'copied' | 'kept-symlink' };
+  agents: { path: string; action: 'copied' | 'kept-symlink' | 'in-place' };
   claude: { path: string; action: 'linked' | 'kept' | 'skipped-dir' };
 }
 
 const isSymlink = (p: string): boolean => {
   try {
     return lstatSync(p).isSymbolicLink();
+  } catch {
+    return false;
+  }
+};
+
+/** True when the source is the installed directory itself (the CLI running out of ~/.agents/skills/okr/scripts). */
+const samePlace = (a: string, b: string): boolean => {
+  try {
+    return realpathSync(a) === realpathSync(b);
   } catch {
     return false;
   }
@@ -67,6 +79,8 @@ export function installSkill(opts: { home?: string; force?: boolean; src?: strin
   let agentsAction: SkillInstallResult['agents']['action'] = 'copied';
   if (isSymlink(p.agents) && !opts.force) {
     agentsAction = 'kept-symlink';
+  } else if (!isSymlink(p.agents) && samePlace(src, p.agents)) {
+    agentsAction = 'in-place';
   } else {
     mkdirSync(dirname(p.agents), { recursive: true });
     rmSync(p.agents, { recursive: true, force: true });
@@ -122,7 +136,7 @@ export function ensureSkill(opts: { home?: string; src?: string; env?: NodeJS.Pr
   const p = skillPaths(opts.home);
   try {
     if (!existsSync(join(src, 'SKILL.md'))) return null;
-    if (isSymlink(p.agents)) return null;
+    if (isSymlink(p.agents) || (existsSync(p.agents) && samePlace(src, p.agents))) return null;
     if (!existsSync(p.agents)) return { action: 'installed', result: installSkill({ home: opts.home, src }) };
     const stamp = join(p.agents, SKILL_STAMP);
     if (!existsSync(stamp)) return null;
@@ -131,4 +145,18 @@ export function ensureSkill(opts: { home?: string; src?: string; env?: NodeJS.Pr
   } catch {
     return null;
   }
+}
+
+/** `okr skill link`: put the running CLI on PATH as ~/.local/bin/okr (or --dir). Refuses to clobber a real file. */
+export function linkCli(opts: { dir?: string; home?: string; script?: string; env?: NodeJS.ProcessEnv } = {}): { link: string; target: string; dir: string; onPath: boolean } {
+  const env = opts.env ?? process.env;
+  const dir = resolve(opts.dir ?? join(opts.home ?? homedir(), '.local', 'bin'));
+  const target = realpathSync(opts.script ?? process.argv[1]);
+  const link = join(dir, SKILL_NAME);
+  mkdirSync(dir, { recursive: true });
+  if (isSymlink(link)) rmSync(link);
+  else if (existsSync(link)) throw new Error(`${link} 已存在且不是软链，不覆盖`);
+  symlinkSync(target, link);
+  const onPath = (env.PATH ?? '').split(delimiter).some((d) => d && samePlace(d, dir));
+  return { link, target, dir, onPath };
 }
