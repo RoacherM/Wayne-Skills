@@ -8,13 +8,15 @@
 
 ## 安装
 
+一条命令，CLI 和 skill 一起装（Node ≥ 23.6，无构建步骤）：
+
 ```bash
-npx -y --no-audit skills add RoacherM/Wayne-Skills -s '*' -g -y -a claude-code -a codex   # 全部 skill
-npx -y --no-audit skills add RoacherM/Wayne-Skills -s okr -g -y -a codex  # 只要某几个；-l 只列不装
-npm install -g github:RoacherM/Wayne-Skills                                     # okr CLI（Node ≥ 23.6，无构建步骤）
+npm install -g github:RoacherM/Wayne-Skills
 ```
 
-skill 装到 `~/.agents/skills/<name>`：Codex / Copilot / OpenCode 直接读这个目录，Claude Code 由 `~/.claude/skills/<name>` 软链过去（`-a codex` 不会在 `~/.codex` 下建任何东西）；要 Gemini 就加 `-a gemini-cli`。更新：skill 跑 `npx -y --no-audit skills update -g`，CLI 重跑 `npm install -g`。`--no-audit` 是因为首次拉 `skills` 包时 npm 的 audit 请求在某些网络下会静默挂住几分钟。
+装 CLI 的同时把 `okr` skill 复制到 `~/.agents/skills/okr`（Codex / Copilot / OpenCode 直接读这个目录），并给 Claude Code 建软链 `~/.claude/skills/okr`。更新就重跑同一条命令。skill 没装上或想单独处理：`okr skill install`（`--force` 覆盖开发用的软链）、`okr skill remove`、`okr skill status`；`OKR_SKIP_SKILL=1 npm install -g …` 只装 CLI。
+
+也可以用 [skills CLI](https://github.com/vercel-labs/skills) 装 skill（比如要 Gemini：`npx -y --no-audit skills add RoacherM/Wayne-Skills -s okr -g -y -a gemini-cli`；`--no-audit` 是因为首次拉包时 npm 的 audit 请求在某些网络下会静默挂几分钟）。两种方式装到同一个位置，后装的覆盖先装的。
 
 ## okr
 
@@ -33,8 +35,8 @@ okr show kr1.2 --spec   # 派工包
 git clone https://github.com/RoacherM/Wayne-Skills ~/Desktop/Projects/sides/wayne-skills && cd ~/Desktop/Projects/sides/wayne-skills
 npm install && npm link                          # okr 指向仓库，改代码即生效；会覆盖 npm install -g 装的那份，回发布版重跑 npm install -g
 npm test && npm run typecheck
-npx -y --no-audit skills add ~/Desktop/Projects/sides/wayne-skills -s '*' -g -y -a claude-code -a codex
-for s in ~/Desktop/Projects/sides/wayne-skills/skills/*/; do n=$(basename $s); rm -rf ~/.agents/skills/$n && ln -s $s ~/.agents/skills/$n; done   # 换成软链，改 SKILL.md 即生效
+for s in ~/Desktop/Projects/sides/wayne-skills/skills/*/; do n=$(basename $s); rm -rf ~/.agents/skills/$n && ln -s $s ~/.agents/skills/$n; done   # skill 用软链，改 SKILL.md 即生效
+okr skill install                                # 只补 Claude Code 的软链；~/.agents/skills 里已是软链就不动
 ```
 
 加新 skill 看 [`skills/README.md`](skills/README.md)。

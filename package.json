@@ -11,12 +11,14 @@
   "files": [
     "bin",
     "src",
-    "docs/okr/PROTOCOL.md"
+    "docs/okr/PROTOCOL.md",
+    "skills/okr"
   ],
   "engines": {
     "node": ">=23.6"
   },
   "scripts": {
+    "postinstall": "node bin/postinstall.js",
     "demo": "node bin/okr.js tui --demo",
     "typecheck": "tsc --noEmit",
     "test": "node --test test/"

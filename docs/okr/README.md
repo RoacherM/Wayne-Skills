@@ -13,19 +13,18 @@
 需要 Node ≥ 23.6，TypeScript 由 Node 原生剥离，没有构建步骤。
 
 ```bash
-npm install -g github:RoacherM/Wayne-Skills                                    # CLI，之后全局可用 okr
-npx -y --no-audit skills add RoacherM/Wayne-Skills -s okr -g -y -a claude-code -a codex   # okr skill，装到 ~/.agents/skills/<name>
-okr tui --demo                                                         # 先用示例数据看看
+npm install -g github:RoacherM/Wayne-Skills   # CLI + okr skill 一起装；更新重跑同一条
+okr skill status                               # 看 skill 装到哪了
+okr tui --demo                                 # 先用示例数据看看
 ```
 
-仓库里还有别的 skill（见 `skills/README.md`），`-s '*'` 全装，`-l` 只列不装。装到 `~/.agents/skills/<name>`：Codex / Copilot / OpenCode 直接读这个目录，Claude Code 由 `~/.claude/skills/<name>` 软链过去。要 Gemini 就再加 `-a gemini-cli`。更新时 CLI 重跑 `npm install -g github:RoacherM/Wayne-Skills`，skill 跑 `npx -y --no-audit skills update -g`（`--no-audit`：首次拉包时 npm audit 在某些网络下会静默挂住）。agent 用 `okr protocol` 读协议，不依赖仓库路径。
+postinstall 把 `skills/okr` 复制到 `~/.agents/skills/okr`（Codex / Copilot / OpenCode 直接读），并建软链 `~/.claude/skills/okr`（Claude Code）。手动：`okr skill install [--force]` / `remove` / `status`；`OKR_SKIP_SKILL=1` 跳过。要 Gemini 之类别的 agent，用 skills CLI：`npx -y --no-audit skills add RoacherM/Wayne-Skills -s okr -g -y -a gemini-cli`（`--no-audit`：首次拉包时 npm audit 在某些网络下会静默挂住）。agent 用 `okr protocol` 读协议，不依赖仓库路径。
 
 本地开发：
 
 ```bash
 git clone https://github.com/RoacherM/Wayne-Skills ~/Desktop/Projects/sides/wayne-skills && cd ~/Desktop/Projects/sides/wayne-skills && npm install && npm link   # 覆盖 npm install -g 装的那份，回发布版重跑 npm install -g
-npx -y --no-audit skills add ~/Desktop/Projects/sides/wayne-skills -s okr -g -y -a claude-code -a codex
-for s in ~/Desktop/Projects/sides/wayne-skills/skills/okr*/; do n=$(basename $s); rm -rf ~/.agents/skills/$n && ln -s $s ~/.agents/skills/$n; done   # 换成软链，改 SKILL.md 即生效
+rm -rf ~/.agents/skills/okr && ln -s ~/Desktop/Projects/sides/wayne-skills/skills/okr ~/.agents/skills/okr && okr skill install   # skill 用软链，改 SKILL.md 即生效；install 只补 Claude Code 软链
 npm test && npm run typecheck
 okr tree --demo && okr show kr1.2 --spec --demo   # 派工包长什么样
 ```

@@ -1,4 +1,4 @@
-<!-- okr：追加到 ~/.codex/AGENTS.md 或 ~/.gemini/GEMINI.md（Codex / Gemini 通用片段）。支持 skill 的 agent（Claude Code / Codex / Gemini）用 npx skills add 装 skills/okr，不需要这段。 -->
+<!-- okr：追加到 ~/.codex/AGENTS.md 或 ~/.gemini/GEMINI.md（Codex / Gemini 通用片段）。支持 skill 的 agent（Claude Code / Codex / Gemini）用 npm install -g github:RoacherM/Wayne-Skills 装 CLI 时会一并装上 skills/okr，不需要这段。 -->
 
 ## okr（目标与任务追踪）
 

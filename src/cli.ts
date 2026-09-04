@@ -8,6 +8,7 @@ import { MigrateError, migrate } from './migrate.ts';
 import { descendants, isAncestor, matchNode, newId, project, specComplete, takenIds, velocity } from './project.ts';
 import type { Tree } from './project.ts';
 import * as store from './store.ts';
+import { installSkill, removeSkill, skillPaths } from './skill.ts';
 import { runTui } from './tui.ts';
 import { KIND_LABEL, STAGE_LABEL } from './types.ts';
 import type { Event, EventType, Node, NodeKind, NodeState, Priority, Spec } from './types.ts';
@@ -816,6 +817,42 @@ function cmdProtocol(): void {
   else process.stdout.write(text);
 }
 
+const SKILL_USAGE = '用法: okr skill install [--force] | remove | status';
+
+const SKILL_ACTION: Record<string, string> = {
+  copied: '已复制',
+  'kept-symlink': '已是软链（开发模式），保留',
+  linked: '已建软链',
+  kept: '软链已在',
+  'skipped-dir': '是真实目录，不动',
+};
+
+function cmdSkill(): void {
+  const sub = args._[1] ?? 'status';
+  if (sub === 'install') {
+    const r = installSkill({ force });
+    ok({ ...r }, () => {
+      console.log(`${color(GREEN, '✓')} skill 装好了。`);
+      console.log(`  ${r.agents.path}  ${SKILL_ACTION[r.agents.action]}（Codex / Copilot / OpenCode 直接读）`);
+      console.log(`  ${r.claude.path}  ${SKILL_ACTION[r.claude.action]}（Claude Code）`);
+    });
+  } else if (sub === 'remove') {
+    const r = removeSkill();
+    ok({ ...r }, () => {
+      for (const x of r.removed) console.log(`${color(GREEN, '✓')} 已删 ${x}`);
+      for (const x of r.kept) console.log(`${dim('·')} 保留 ${x}（不是 okr skill install 装的）`);
+      if (!r.removed.length && !r.kept.length) console.log('没有装过。');
+    });
+  } else if (sub === 'status') {
+    const p = skillPaths();
+    const st = (x: string) => (existsSync(x) ? '在' : '不在');
+    ok({ agents: p.agents, claude: p.claude, installed: existsSync(p.agents) }, () => {
+      console.log(`${p.agents}  ${st(p.agents)}`);
+      console.log(`${p.claude}  ${st(p.claude)}`);
+    });
+  } else fail(SKILL_USAGE);
+}
+
 function cmdHelp(): void {
   console.log(
     [
@@ -826,6 +863,7 @@ function cmdHelp(): void {
       `${bold('数据')}   velocity [--weeks]`,
       `${bold('视图')}   tui · status · tree · show`,
       `${bold('协议')}   protocol（打印 PROTOCOL.md，agent 先读它再写）`,
+      `${bold('skill')}  skill install [--force] · remove · status（装进 ~/.agents/skills 与 ~/.claude/skills，npm install -g 时自动跑）`,
       '',
       `${bold('通用')}   --json  --today YYYY-MM-DD  --at <时间>  --demo  --by <agent>  --session <id>  --confirmed  --force`,
       `${bold('退出码')} 0 成功 · 1 错误 · 2 指代歧义 · 3 守卫拒绝/validate 失败 · 4 锁超时`,
@@ -870,6 +908,7 @@ switch (cmd) {
   case 'tree': cmdTree(); break;
   case 'show': cmdShow(); break;
   case 'protocol': cmdProtocol(); break;
+  case 'skill': cmdSkill(); break;
   case 'tui': case '': cmdTui(); break;
   case 'demo':
     if (!process.stdout.isTTY || !process.stdin.isTTY) fail('tui 需要终端。非交互环境用 okr status / okr tree。');

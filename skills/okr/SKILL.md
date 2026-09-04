@@ -11,7 +11,7 @@ description: "通过 okr CLI 替用户记录目标 / KR / 任务 / 习惯的进�
 okr protocol
 ```
 
-没有 `okr` 命令：`npm install -g github:RoacherM/Wayne-Skills`（Node ≥ 23.6）。没有 `~/.okr/nodes.yaml`：问用户是否 `okr init`，旧 `goals.yaml` 走 `okr migrate`。
+没有 `okr` 命令：`npm install -g github:RoacherM/Wayne-Skills`（Node ≥ 23.6，会连本 skill 一起装）。没有 `~/.okr/nodes.yaml`：问用户是否 `okr init`，旧 `goals.yaml` 走 `okr migrate`。
 
 ## 本 skill 固定的事
 
