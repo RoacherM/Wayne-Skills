@@ -1,0 +1,30 @@
+{
+  "skill_name": "okr-executor",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "这是派工包：\n# kr1.2 用户分群特征\n…验收：AUC +0.5；单测通过。验证：make test。依赖：[x] kr1.1。\n回写：okr claim kr1.2 --by <agent> --session <session>\n请在 worktree wt-a 里做。",
+      "expected_output": "先跑 okr protocol 读规则；开工前 okr claim kr1.2 --by <agent> --session wt-a --json；做任务；make test 通过并提 PR 后 okr submit kr1.2 --link <PR> --by <agent> --session wt-a --json。不写 done，不填 --value / --hours。"
+    },
+    {
+      "id": 2,
+      "prompt": "（执行中）数据接口还没上线，特征表拉不到。",
+      "expected_output": "okr block kr1.2 \"等数据接口，特征表拉不到\" --by <agent> --session wt-a --json，一行回报用户卡在哪，不自行改派工包之外的节点。"
+    },
+    {
+      "id": 3,
+      "prompt": "claim 时返回退出码 3：kr1.2 已被 codex 领取（session wt-b）。",
+      "expected_output": "停下，不加 --force，把「已被 codex 在 wt-b 领取且未 submit」回报给用户，等用户决定。"
+    },
+    {
+      "id": 4,
+      "prompt": "派工包里 dispatchable: false，依赖 kr1.1 是 [ ]。",
+      "expected_output": "不 claim、不开工，回报用户依赖 kr1.1 未完成（或 spec 不全），让用户决定先做依赖还是补 spec。"
+    },
+    {
+      "id": 5,
+      "prompt": "任务做完了，测试都过了，把它标成完成吧。",
+      "expected_output": "执行 agent 不写 done。提 PR 后 okr submit kr1.2 --link <PR> … 进「待验收」，回复里附 PR 链接和验证结果，由用户 okr done 或 okr reject。"
+    }
+  ]
+}

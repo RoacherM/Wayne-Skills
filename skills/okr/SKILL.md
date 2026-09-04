@@ -1,207 +1,47 @@
 ---
 name: okr
-description: "Git-native OKR tracking with AI intelligence. Use when: (1) initializing OKR tracking ('set up OKR', 'init okr', '帮我建OKR'), (2) recording progress in natural language ('retention improved to 45%', 'data platform shipped', 'hiring blocked', '精度提升到90%', '被阻塞了', '完成了'), (3) checking OKR status ('how are we doing', 'show progress', 'dashboard', 'OKR进度怎样', '看板'), (4) revising spec ('adjust target', 'cancel KR', 'freeze KR', '调整目标', '取消KR'), (5) closing a quarter ('close quarter', 'wrap up Q1', '季度关闭'), (6) visualizing progress ('metro map', '可视化', '地铁图'). Triggers: /okr, any KR progress update, metric change, blocker report, okr init/status/revise/close, metro map. Even if user doesn't say 'OKR' explicitly — if they mention KR progress, quarterly goals, or metric updates related to their OKR setup, use this skill."
+description: "通过 okr CLI 替用户记录目标 / KR / 任务 / 习惯的进展并做周计划。触发：/okr；用户提到 OKR、KR、目标进度、指标到了多少、任务做完了 / 卡住了 / 提了 PR、习惯打卡、周计划、拆任务、派工、看板 / 进度怎么样；英文 'okr', 'kr progress', 'mark done', 'blocked', 'weekly plan', 'dashboard'。用户没说 OKR 但在汇报某个已登记目标的进展时也用。执行 agent 拿到派工包回写 claim / block / log / submit 也走这里。"
 ---
 
-# OKR Git Tracker
+# okr
 
-OKR repo: `~/.okr`. All operations target this repo regardless of current working directory.
-
-## Event Format
-
-**3 KR prefixes — the only event types:**
-
-| Prefix | Meaning | Dot | When |
-|--------|---------|-----|------|
-| `progress` | Forward movement | ● circle | Metric change, discussion, research, correction |
-| `done` | Delivered | ◆ diamond | KR or milestone shipped |
-| `blocked` | Stuck | ■ square | Waiting on external dependency |
-
-**Commit format:** `prefix(scope): description [metric=value/target]`
-- Scope: `krN` (KR trunk) or `krN/project` (project sub-track)
-- Metric suffix is optional, recommended for `progress`
-- Milestone: commit message containing "milestone" or "reached target"
-
-**Admin commits (main branch only, not KR events):**
-```
-init: okr tracking {YYYY}Q{N}
-revise(krN): description of change
-close: Q{N} {YYYY} final O1=X% O2=Y%
-```
-
-**Examples:**
-```
-progress(kr1): retention rate improved ret=45%/50%
-done(kr1/user-seg): shipped user segmentation model
-blocked(kr1/rec-v2): waiting on data team
-progress(kr3): accuracy corrected acc=76%/95%
-```
-
-## okr.md Spec Format
-
-Spec-only file on main branch. Contains structure and targets. NO progress bars, NO blocked items, NO recent activity.
-
-```markdown
-# OKR Spec {YYYY} Q{N}
-
-> Type: 工作绩效 | Quarter: Q{N} ({months}) | Project: {name}
-
-## O1 {Objective Title}
-
-**KR1 {Name}** `{alias}` {weight}%
-  metric: {type} | baseline: {value} | target: {value}
-
-**KR2 {Name}** `{alias}` {weight}%
-  metric: {type} | baseline: {value} | target: {value}
-```
-
-- Alias: unique ASCII ID for commits and matching
-- State markers: `[canceled]`, `[frozen]` — set by revise only
-- Modified ONLY by: init, revise, close (all on main)
-- KR numbering: sequential across all objectives
-
-## Routing
-
-Check `~/.okr/okr.md` existence. If missing → init. Otherwise classify into 5 intents:
-
-- **init**: "set up", "initialize", "create okr"
-- **commit**: any progress update, metric change, blocker, deliverable
-- **status**: "show", "progress", "dashboard", "how are we doing"
-- **revise**: "adjust target", "change weight", "cancel KR", "freeze KR"
-- **close**: "close quarter", "end cycle", "wrap up Q1"
-
-## Init
-
-1. Create `~/.okr` as git repo (main branch)
-2. OKR structuring guidance:
-   - Collect dimensions: time range, type, project/team
-   - Help structure into Objective + KR format
-   - For each KR: name, alias, metric type, baseline, target, weight
-   - Grade mapping if applicable: D=40%, C=60%, B=80%, A=100%
-   - Validate weights sum per objective, confirm baselines
-3. Generate `okr.md` in spec format (spec only, NO progress)
-4. Create directories: `log/`, `bin/`
-5. Copy `templates/metro` to `~/.okr/bin/metro`, `chmod +x`
-6. Commit on main: `init: okr tracking {YYYY}Q{N}`
-7. Create KR branches: `{YYYY}Q{N}/kr/{NUM}-{slug}` per KR
-8. Show git graph + spec preview
-
-## Smart Commit
-
-User speaks one sentence → AI detects KR + prefix → commits on correct branch → shows progress delta.
-
-### KR Matching (Safety Gate)
-
-```
-1. Exact alias/number match     → direct write
-2. Unique keyword match         → direct write
-3. Multiple candidates          → LIST OPTIONS, ASK USER (hard interrupt)
-4. Zero matches                 → error: "未找到匹配的KR"
-```
-
-**Step 3 is non-negotiable. NEVER silently guess when ambiguous.**
-
-### Workflow
-
-1. Read `~/.okr/okr.md` from **main HEAD** for O/KR structure
-2. Match user input to KR using safety gate above
-3. Determine prefix: progress / done / blocked
-4. Commit via checkout (no worktree):
-   ```bash
-   git -C ~/.okr checkout {branch}
-   git -C ~/.okr commit --allow-empty -m "prefix(scope): description [metric=value/target]"
-   git -C ~/.okr checkout main
-   ```
-5. Derive progress from git log (NOT from file)
-6. Show one-line confirmation with progress delta
-   - Milestone → celebrate briefly
-   - Blocked >7 days → flag [!]
-
-**CRITICAL**: NEVER update okr.md for progress. The commit message IS the data.
-
-### Batch Updates
-
-When user provides multiple KR updates in one message:
-1. Parse ALL updates first
-2. Present summary for confirmation
-3. Commit each in sequence after user confirms
-
-## Status
-
-Compute dashboard from spec + git log. NEVER persist dashboard to file.
-
-### Projection (single definition — status and metro share this)
-
-1. Read `okr.md` from main HEAD → parse O/KR structure
-2. Scan: `git -C ~/.okr log main --all --format="%H|%s|%ad" --date=iso`
-3. Per-KR state (from commit messages matching `(progress|done|blocked)(krN)`):
-   - `progress` → update current metric (last-write-wins)
-   - `done` → mark completed
-   - `blocked` → mark blocked (resolved by subsequent progress/done on same scope)
-4. Progress: `(current - baseline) / (target - baseline) * 100`
-   - Grade metric: D=40, D+=50, C-=55, C=60, C+=70, B-=75, B=80, B+=85, A-=90, A=95, A+=100
-   - Milestone metric: count `done()` events / expected milestones
-5. Health: `on-track` if progress% ≥ elapsed%-10, `at-risk` if ≥ elapsed%-25, `behind` otherwise
-6. Inactivity: warn if no commits for 14+ days
-
-### Dashboard Display
-
-```
-# OKR Dashboard {YYYY} Q{N}
-> Computed: {date} | Elapsed: {elapsed}%
-
-## O{N} {Title}
-
-**KR{N} {Name}** `{alias}` {weight}%  {baseline}→{target}  {metric}={current}  **{progress}%** [{health}]
-████████████░░░░░░░░
-
-### Blocked Items
-| KR | Scope | Days | Reason |
-|----|-------|------|--------|
-
-### Recent Activity
-- {prefix}({scope}): {description} ({date})
-```
-
-## Metro Map
-
-Visual metro map. Generates `~/.okr/log/metro.html`.
-
-Source template: `templates/metro` (copy to `~/.okr/bin/metro` during init, keep in sync).
+用户的目标与任务追踪在 `~/.okr`，命令行工具 `okr`（仓库 github.com/RoacherM/Wayne-Skills，本 skill 在其 `skills/okr/`，执行 agent 用同仓库的 `okr-executor`）。规则全部在协议文档里，先读它再动手：
 
 ```bash
-~/.okr/bin/metro                     # all quarters
-~/.okr/bin/metro --quarter 2026Q1    # specific quarter
-~/.okr/bin/metro --no-open           # generate without opening
+okr protocol 2>/dev/null || cat "$(dirname "$(readlink -f "$(command -v okr)")")/../docs/okr/PROTOCOL.md"
 ```
 
-Suggest after: status checks, multiple commits in one session, user asks about visualization.
+没有 `okr` 命令：`npm install -g github:RoacherM/Wayne-Skills`（Node ≥ 23.6）。没有 `~/.okr/nodes.yaml`：问用户是否 `okr init`，旧 `goals.yaml` 走 `okr migrate`。
 
-## Revise
+## 本 skill 固定的事
 
-Modify OKR spec on main branch.
+- 写入一律带 `--by <自己的名字> --json`（Claude Code 用 `claude`，Codex 用 `codex`，Gemini 用 `gemini`），读也 `--json`，自己解析后用中文一句话回用户。
+- 会话里第一次碰 okr 先按协议 §2 跑 brief（未实现前 `okr tree --json` 过滤 task 的 `flags`，`okr status --json` 看根节点 `health`，`okr recent --days 7 --json` 看动静），有事才提一句。
+- 每次写之前 `okr recent --node <id> --days 7 --json` 查重，语义重复不写。
+- 指代歧义（退出码 2）列候选让用户选；需要 `--confirmed` 的事先说清楚再等用户点头；被守卫拒绝（退出码 3）按协议 §10 处理，不自作主张 `--force`。
+- 数值（`--value`、`--hours`）只写用户口述的。
 
-1. Read current spec from `okr.md` on main
-2. Apply change:
-   - **Change target/weight/name**: update okr.md, commit `revise(krN): description`
-   - **Add KR**: add to spec, create new branch, commit on main
-   - **Cancel KR**: mark `[canceled]` in spec, commit `revise(krN): canceled at {progress}%`
-   - **Freeze KR**: mark `[frozen]` in spec, commit `revise(krN): frozen, carry-over to Q{N+1}`
-   - **Unfreeze KR**: remove `[frozen]`, commit `revise(krN): unfrozen, resumed`
-3. Show updated spec preview
-4. Revise NEVER touches KR branches — only modifies okr.md on main
+## 意图 → 协议章节
 
-## Close
+| 用户在做什么 | 看协议 | 典型命令 |
+|---|---|---|
+| 汇报进展、指标、完成、阻塞、打卡 | §3 §4 | `okr log` `done` `block` `check` |
+| 验收执行 agent 的 PR | §4 §9 | `okr done` / `okr reject "意见"` |
+| 问进度、看板、哪些落后 | §2 | `okr tree --json`（task 的 `flags` / `stage` 只在这里和 `show` 里）、`okr status --json`（根节点）、`okr show <id> --json` |
+| 评估某个目标到了几成 | §5 | 默认信推导；不同意才 `okr assess --value --reason` |
+| 建目标、拆任务、做周计划、今日清单 | §6 §7 | 先展示提案 → 用户点头 → `plan.yaml` + `okr apply --confirmed`（未实现前逐条 `add` / `edit`） |
+| 改结构：加、改、挪、删、取消、冻结 | §7 | `okr add/edit/move/rm … --confirmed` |
+| 「这个仓库对应哪个 KR」、汇总仓库进度 | §8 | `okr repo add <path> --node <id>`，读仓库 `.okr.yaml` |
+| 派任务给执行 agent | §9 | `okr show <id> --spec`，整段贴给执行 agent |
+| 自己就是执行 agent（拿到派工包） | §9 | 走 `okr-executor` skill：只写 `claim` `block` `log` `submit --link`，带 `--by` `--session` |
 
-Quarter close: score, merge, tag, clean up.
+## 回复格式
 
-1. Run status derivation for final scores
-2. Present summary, ask for qualitative assessment per KR
-3. Commit on main: `close: Q{N} {YYYY} final O1={score}% O2={score}%`
-4. Merge all KR branches: `git merge --no-ff {branch}` per KR
-5. Tag: `git tag -a v{YYYY}-Q{N} -m "Quarter close"`
-6. Delete merged branches: `git branch -d {branch}`
-7. Canceled: merge for audit trail, then delete
-8. Frozen: merge, carry-over to next quarter (re-create in new namespace)
-9. Ask about carry-over: which active KRs to bring to next quarter?
-10. Show final git graph
+- 写入成功：一行，说记到了哪个节点、什么事件，附推导变化（`show --json` 的 `progress` / `stage`）。例：「记到 kr1：精度 86%（53% → 58%）」。
+- 多条更新一句话里：先解析成列表给用户看，确认后按顺序写，逐条一行。
+- 看板：直接 `okr status` 的人类输出贴出来（终端能显示 ANSI），再补一两句要关注的。
+- 提案：任务名、优先级、截止、所属、一句为什么；不要在用户确认前写入。
+
+## 派工
+
+用户点名派工时：`okr show <id> --spec --json` 检查 `dispatchable`；不可派就先补 spec（问用户 goal / accept / verify / link）。可派就把 `okr show <id> --spec` 的 markdown 原样交给执行 agent（用户自己开的窗格 / worktree 里的 codex 或 claude），并告诉它 `--by` 用什么名字、`--session` 用 worktree 名；那边装了 `okr-executor` skill 会自动按契约回写。之后用 `okr show <id> --json` 的 `claimed` / `stage` 跟进。

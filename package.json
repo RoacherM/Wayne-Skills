@@ -1,0 +1,31 @@
+{
+  "name": "wayne-skills",
+  "version": "0.1.0",
+  "description": "Wayne's agent skills, plus the okr CLI: goal and task tracking with a terminal dashboard. Events in, views out.",
+  "repository": "github:RoacherM/Wayne-Skills",
+  "homepage": "https://github.com/RoacherM/Wayne-Skills#readme",
+  "type": "module",
+  "bin": {
+    "okr": "./bin/okr.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "docs/okr/PROTOCOL.md"
+  ],
+  "engines": {
+    "node": ">=23.6"
+  },
+  "scripts": {
+    "demo": "node bin/okr.js tui --demo",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test test/"
+  },
+  "dependencies": {
+    "yaml": "^2.6.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  }
+}

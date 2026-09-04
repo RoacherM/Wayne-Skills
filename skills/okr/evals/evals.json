@@ -3,58 +3,63 @@
   "evals": [
     {
       "id": 1,
-      "prompt": "KR3的精度到了92%了，另外KR2剪辑评分提升到C-",
-      "expected_output": "Should parse two separate KR updates from a single Chinese sentence: (1) KR3 progress(kr3): tagging accuracy acc=92%/95%, and (2) KR2 progress(kr2): editing grade=C-/C. Should create two separate commits on correct KR branches (checkout, commit, checkout main). Should show progress deltas for both KRs."
+      "prompt": "kr1 精度到 86 了，另外 kr2 又读完一本，现在 8 本",
+      "expected_output": "先 okr recent 查重，再写两条：okr log kr1 \"…\" --value 86 --by <agent> --json 和 okr log kr2 \"…\" --value 8 --by <agent> --json。value 是 metric 单位的绝对值。每条回一行，附推导前后变化。不推算任何数值。"
     },
     {
       "id": 2,
-      "prompt": "OKR进度怎么样了？",
-      "expected_output": "Should display a terminal dashboard showing all KRs with current progress computed from git log. Should include health markers and blocked items. Should handle grade and milestone metrics correctly. Should suggest next actions for at-risk or blocked items. Dashboard is NEVER written to file."
+      "prompt": "OKR 进度怎么样了？",
+      "expected_output": "跑 okr status（人类输出贴给用户）；要找到期 / 阻塞 / 停滞 / 待验收超时的任务用 okr tree --json 过滤 task 的 flags（status --json 只有根节点，没有任务标签）。不写入任何东西。只补一两句要关注的。"
     },
     {
       "id": 3,
-      "prompt": "把KR1的目标从launch+users改成launch+500DAU，权重调到35%",
-      "expected_output": "Should modify okr.md on main branch: update KR1 target to launch+500DAU and weight to 35%. Should commit with format revise(kr1): target changed to launch+500DAU, weight to 35%. Should NOT touch any KR branch. Should show updated spec preview."
+      "prompt": "精度提升了",
+      "expected_output": "如果多个节点匹配「精度」（或 CLI 退出码 2 给出 candidates），列出候选让用户选，绝不猜。用户没给数值，不写 --value。"
     },
     {
       "id": 4,
-      "prompt": "精度提升了",
-      "expected_output": "MUST NOT silently pick a KR. Multiple KRs may involve accuracy/precision. Should list candidate KRs with aliases and ask user to choose. Safety gate: ambiguous input = hard interrupt, never guess."
+      "prompt": "kr1 做完了",
+      "expected_output": "kr1 是 metric（KR），完成要用户确认。先问「确认 kr1 完成？」，用户点头后 okr done kr1 --confirmed --by <agent> --json。不能在用户确认前传 --confirmed。"
     },
     {
       "id": 5,
-      "prompt": "user-seg模型训练完成了",
-      "expected_output": "Should commit with project scope: done(kr1/user-seg): model training complete. Commit goes on kr1 branch. Metro should render a sub-track (thin line) branching from kr1 trunk with a diamond (done) dot merging back."
+      "prompt": "把 m1 拆一下，这周先做接口那块",
+      "expected_output": "先展示提案（任务名、优先级、截止、所属、一句为什么），不写入。用户确认后落成 reports/<周>.plan-N.yaml 并 okr apply --from … --confirmed；apply 未实现时逐条 okr add --parent m1 --kind task … --week <本周> --confirmed。当天步骤只在对话里说。"
     },
     {
       "id": 6,
-      "prompt": "上次精度报错了，应该是76%不是78%",
-      "expected_output": "Should use progress prefix (NOT fix): progress(kr3): accuracy corrected acc=76%/95%. Description should mention correction. No dedicated fix prefix exists — progress covers corrections."
+      "prompt": "昨天跑步了",
+      "expected_output": "okr check h1 --at <昨天日期> --by <agent> --json。先 recent 查昨天是否已打过卡，打过就不重复。"
     },
     {
       "id": 7,
-      "prompt": "帮我建一个Q2的OKR",
-      "expected_output": "Should create ~/.okr as git repo (if not exists). Generate okr.md on main with spec-only format. Create KR branches (YYYY Q2/kr/N-slug). NO worktrees created. Copy metro template to ~/.okr/bin/metro. Commit: init: okr tracking YYYYQ2. Show git graph."
+      "prompt": "m1.1 不卡了，数据团队给了接口",
+      "expected_output": "okr log m1.1 \"解除阻塞：数据团队给了接口\" --by <agent> --json。任一阶段事件即解除阻塞，不需要专门命令，不用 done。"
     },
     {
       "id": 8,
-      "prompt": "关闭Q1",
-      "expected_output": "Should run final status derivation and present scores. Commit on main: close: Q1 2026 final O1=X% O2=Y%. Create tag: git tag -a v2026-Q1. Should NOT merge KR branches. Should NOT delete branches. Branches are history, not features."
+      "prompt": "帮我把 kr1.3 派给 codex",
+      "expected_output": "okr show kr1.3 --spec --json 检查 dispatchable；不可派则先补 spec（问 goal / accept / verify / link）。可派则把 okr show kr1.3 --spec 的 markdown 整段交给执行 agent，说明 --by codex 与 --session 用 worktree 名。自己不写 claim。"
     },
     {
       "id": 9,
-      "prompt": "生成地铁图",
-      "expected_output": "Should run ~/.okr/bin/metro to generate metro.html. Output should contain exactly 3 dot shapes: circle (progress), diamond (done), square (blocked). Legend should show 3 event types + line weight distinction (trunk vs scope). No fix/review/note dots."
+      "prompt": "（作为执行 agent，拿到 kr1.2 的派工包）验证命令过了，PR 是 https://github.com/acme/recsys/pull/421",
+      "expected_output": "okr submit kr1.2 --link https://github.com/acme/recsys/pull/421 --by <agent> --session <session> --json。执行 agent 不写 done / assess / edit，不填 --value --hours。"
     },
     {
       "id": 10,
-      "prompt": "rec-v2不再阻塞了，数据团队给了接口",
-      "expected_output": "Should commit: progress(kr1/rec-v2): unblocked, data team provided API. Subsequent status check should show rec-v2 as active (no longer blocked). Blocked state is resolved by any progress/done commit on same scope."
+      "prompt": "o1 我觉得只有四成",
+      "expected_output": "okr assess o1 --value 40 --reason \"…\"，理由引用具体 KR / 任务状态（如 kr1 到 86、m1.1 阻塞）。如果用户没给理由，先问理由再写；不能省略 --reason。"
     },
     {
       "id": 11,
-      "prompt": "取消KR4",
-      "expected_output": "Should mark [canceled] in okr.md on main. Commit: revise(kr4): canceled at X%. KR branch preserved for audit. Metro renders KR4 track at 35% opacity. Should NOT delete branch."
+      "prompt": "取消 o0",
+      "expected_output": "先确认，用户点头后 okr edit o0 --status canceled --confirmed --by <agent> --json。不用 rm（有事件的节点不能删）。"
+    },
+    {
+      "id": 12,
+      "prompt": "再记一条 kr1 到 86（CLI 返回退出码 3 内容相近）",
+      "expected_output": "默认当重复，告诉用户已经记过同样内容。只有用户明确坚持再加 --force 重写。"
     }
   ]
 }
