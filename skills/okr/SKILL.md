@@ -5,7 +5,7 @@ description: "通过 okr CLI 替用户记录目标 / KR / 任务 / 习惯的进�
 
 # okr
 
-用户的目标与任务追踪在 `~/.okr`，命令行工具 `okr`（仓库 github.com/RoacherM/Wayne-Skills，本 skill 在其 `skills/okr/`，执行 agent 用同仓库的 `okr-executor`）。规则全部在协议文档里，先读它再动手：
+用户的目标与任务追踪在 `~/.okr`，命令行工具 `okr`（仓库 github.com/RoacherM/Wayne-Skills，本 skill 在其 `skills/okr/`）。规则全部在协议文档里，先读它再动手：
 
 ```bash
 okr protocol
@@ -33,7 +33,7 @@ okr protocol
 | 改结构：加、改、挪、删、取消、冻结 | §7 | `okr add/edit/move/rm … --confirmed` |
 | 「这个仓库对应哪个 KR」、汇总仓库进度 | §8 | `okr repo add <path> --node <id>`，读仓库 `.okr.yaml` |
 | 派任务给执行 agent | §9 | `okr show <id> --spec`，整段贴给执行 agent |
-| 自己就是执行 agent（拿到派工包） | §9 | 走 `okr-executor` skill：只写 `claim` `block` `log` `submit --link`，带 `--by` `--session` |
+| 自己就是执行 agent（拿到派工包） | §9 | 按契约只写 `claim` `block` `log` `submit --link`，带 `--by` `--session`，不写 `done` / `assess` |
 
 ## 回复格式
 
@@ -44,4 +44,4 @@ okr protocol
 
 ## 派工
 
-用户点名派工时：`okr show <id> --spec --json` 检查 `dispatchable`；不可派就先补 spec（问用户 goal / accept / verify / link）。可派就把 `okr show <id> --spec` 的 markdown 原样交给执行 agent（用户自己开的窗格 / worktree 里的 codex 或 claude），并告诉它 `--by` 用什么名字、`--session` 用 worktree 名；那边装了 `okr-executor` skill 会自动按契约回写。之后用 `okr show <id> --json` 的 `claimed` / `stage` 跟进。
+用户点名派工时：`okr show <id> --spec --json` 检查 `dispatchable`；不可派就先补 spec（问用户 goal / accept / verify / link）。可派就把 `okr show <id> --spec` 的 markdown 原样交给执行 agent（用户自己开的窗格 / worktree 里的 codex 或 claude），并告诉它 `--by` 用什么名字、`--session` 用 worktree 名；并把协议 §9 的执行 agent 契约一起交给它（执行侧暂无单独 skill）。之后用 `okr show <id> --json` 的 `claimed` / `stage` 跟进。

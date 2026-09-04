@@ -5,13 +5,12 @@
 | skill | 做什么 | 依赖 |
 |---|---|---|
 | `okr` | 替用户记目标 / KR / 任务 / 习惯的进展，看板、评估、拆解、周计划、派工 | `okr` CLI（本仓库） |
-| `okr-executor` | 执行 agent 拿到 okr 派工包后只回写 claim / block / log / submit | `okr` CLI（本仓库） |
 
 ## 安装
 
 ```bash
 npx -y --no-audit skills add RoacherM/Wayne-Skills -s '*' -g -y -a claude-code -a codex   # 全部 skill
-npx -y --no-audit skills add RoacherM/Wayne-Skills -s okr -s okr-executor -g -y -a codex  # 只要某几个；-l 只列不装
+npx -y --no-audit skills add RoacherM/Wayne-Skills -s okr -g -y -a codex  # 只要某几个；-l 只列不装
 npm install -g github:RoacherM/Wayne-Skills                                     # okr CLI（Node ≥ 23.6，无构建步骤）
 ```
 

@@ -5,9 +5,8 @@
 | skill | 给谁 | 做什么 |
 |---|---|---|
 | `okr` | 用户的日常对话 agent | 记进展、看板、评估、拆解、周计划、结构变更、派工（协议 §2–§8） |
-| `okr-executor` | 拿到派工包的执行 agent | 只回写 claim / block / log / submit（协议 §9、§10） |
 
-两个 okr skill 的规则都在 `docs/okr/PROTOCOL.md`，skill 只负责把协议接进各自的对话：先 `okr protocol` 读它，再动手。skill 里只写「本 skill 固定的事」和「意图 → 协议章节」，不复制协议内容。
+okr skill 的规则都在 `docs/okr/PROTOCOL.md`，skill 只负责把协议接进对话：先 `okr protocol` 读它，再动手。skill 里只写「本 skill 固定的事」和「意图 → 协议章节」，不复制协议内容。
 
 ## 加一个 skill
 

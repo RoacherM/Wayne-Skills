@@ -1,6 +1,6 @@
 # okr
 
-目标与任务追踪，终端里看，agent 也能读写。事件进，视图出。设计见同目录 `DESIGN.md`，agent 读写规则见 `PROTOCOL.md`，skill 在仓库根的 `skills/`（`okr` 给日常对话 agent，`okr-executor` 给拿到派工包的执行 agent），用 `npx skills add` 装给各个 coding agent。CLI 和 skill 同一个仓库、同一个版本。
+目标与任务追踪，终端里看，agent 也能读写。事件进，视图出。设计见同目录 `DESIGN.md`，agent 读写规则见 `PROTOCOL.md`，skill 在仓库根的 `skills/okr/`（给日常对话 agent：理解、记录、验收、拆解；执行 agent 侧暂无单独 skill，派工时把协议 §9 一起交给它），用 `npx skills add` 装给各个 coding agent。CLI 和 skill 同一个仓库、同一个版本。
 
 - 数据只有两个文件：`~/.okr/nodes.yaml` 是节点树，`~/.okr/events.jsonl` 追加事件。每次写入自动 git commit，git 只做历史和备份，状态永远从文件推导。
 - 节点树任意深度：`objective` 目标 → `metric` 指标（76 → 95）/ `milestone` 里程碑 → `task` 任务。`habit` 习惯平铺，无父的 task 是临时待办。
@@ -14,7 +14,7 @@
 
 ```bash
 npm install -g github:RoacherM/Wayne-Skills                                    # CLI，之后全局可用 okr
-npx -y --no-audit skills add RoacherM/Wayne-Skills -s okr -s okr-executor -g -y -a claude-code -a codex   # 两个 okr skill，装到 ~/.agents/skills/<name>
+npx -y --no-audit skills add RoacherM/Wayne-Skills -s okr -g -y -a claude-code -a codex   # okr skill，装到 ~/.agents/skills/<name>
 okr tui --demo                                                         # 先用示例数据看看
 ```
 
@@ -24,7 +24,7 @@ okr tui --demo                                                         # 先用�
 
 ```bash
 git clone https://github.com/RoacherM/Wayne-Skills ~/Desktop/Devs/wayne-skills && cd ~/Desktop/Devs/wayne-skills && npm install && npm link   # 覆盖 npm install -g 装的那份，回发布版重跑 npm install -g
-npx -y --no-audit skills add ~/Desktop/Devs/wayne-skills -s okr -s okr-executor -g -y -a claude-code -a codex
+npx -y --no-audit skills add ~/Desktop/Devs/wayne-skills -s okr -g -y -a claude-code -a codex
 for s in ~/Desktop/Devs/wayne-skills/skills/okr*/; do n=$(basename $s); rm -rf ~/.agents/skills/$n && ln -s $s ~/.agents/skills/$n; done   # 换成软链，改 SKILL.md 即生效
 npm test && npm run typecheck
 okr tree --demo && okr show kr1.2 --spec --demo   # 派工包长什么样
@@ -92,5 +92,4 @@ test/           node --test
 docs/okr/       本文档、DESIGN.md、PROTOCOL.md（agent 通用协议）、AGENTS.okr.md（不支持 skill 的 agent 用的片段）
 skills/         仓库里的全部 skill，npx skills add 安装（见 skills/README.md）
   okr/          日常对话 agent：记录、看板、计划、派工
-  okr-executor/ 执行 agent：拿到派工包后只回写 claim / block / log / submit
 ```

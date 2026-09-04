@@ -1,6 +1,6 @@
 # okr 协议（agent 通用）
 
-任何 agent（Claude Code、Codex、Gemini、执行 agent）替用户读写 `~/.okr` 都按这份文档来。它不依赖某个 agent 的 skill 机制；仓库里的 skill（`okr` 给对话 agent，`okr-executor` 给执行 agent）和 `AGENTS.okr.md` 片段都只是把这份文档接进各自的对话。数据模型、推导规则和守卫的完整定义在 `DESIGN.md`，这里只讲 agent 该怎么做。
+任何 agent（Claude Code、Codex、Gemini、执行 agent）替用户读写 `~/.okr` 都按这份文档来。它不依赖某个 agent 的 skill 机制；仓库里的 `okr` skill（给对话 agent；执行 agent 暂无单独 skill，拿到派工包按 §9 契约做）和 `AGENTS.okr.md` 片段都只是把这份文档接进各自的对话。数据模型、推导规则和守卫的完整定义在 `DESIGN.md`，这里只讲 agent 该怎么做。
 
 ## 0. 三句话
 
