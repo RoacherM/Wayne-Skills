@@ -18,7 +18,6 @@
     "node": ">=23.6"
   },
   "scripts": {
-    "postinstall": "node bin/postinstall.js",
     "demo": "node bin/okr.js tui --demo",
     "typecheck": "tsc --noEmit",
     "test": "node --test test/"

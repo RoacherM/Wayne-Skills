@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, symlinkSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { installSkill, removeSkill, SKILL_SRC } from '../src/skill.ts';
+import { ensureSkill, installSkill, removeSkill, SKILL_SRC, SKILL_STAMP, skillHash } from '../src/skill.ts';
 
 const fresh = () => mkdtempSync(join(tmpdir(), 'okr-skill-'));
 
@@ -55,3 +55,31 @@ function lstatSafe(p: string): boolean {
     return false;
   }
 }
+
+test('ensureSkill installs when missing, refreshes only its own stamped copy, ignores symlinks and foreign dirs', () => {
+  const home = fresh();
+  const first = ensureSkill({ home });
+  assert.equal(first?.action, 'installed');
+  assert.equal(readFileSync(join(home, '.agents/skills/okr', SKILL_STAMP), 'utf8').trim(), skillHash(SKILL_SRC));
+  assert.equal(ensureSkill({ home }), null, 'up to date → nothing');
+
+  // a newer packaged skill → refreshed in place
+  const src2 = fresh();
+  cpSync(SKILL_SRC, src2, { recursive: true });
+  writeFileSync(join(src2, 'SKILL.md'), 'v2');
+  assert.equal(ensureSkill({ home, src: src2 })?.action, 'updated');
+  assert.equal(readFileSync(join(home, '.agents/skills/okr/SKILL.md'), 'utf8'), 'v2');
+
+  // a copy without our stamp (skills CLI, hand-made) is not ours to touch
+  rmSync(join(home, '.agents/skills/okr', SKILL_STAMP));
+  assert.equal(ensureSkill({ home }), null);
+  assert.equal(readFileSync(join(home, '.agents/skills/okr/SKILL.md'), 'utf8'), 'v2');
+
+  // a dev symlink is left alone; OKR_SKIP_SKILL=1 does nothing even when missing
+  rmSync(join(home, '.agents/skills/okr'), { recursive: true });
+  symlinkSync(SKILL_SRC, join(home, '.agents/skills/okr'));
+  assert.equal(ensureSkill({ home }), null);
+  const home2 = fresh();
+  assert.equal(ensureSkill({ home: home2, env: { OKR_SKIP_SKILL: '1' } }), null);
+  assert.ok(!existsSync(join(home2, '.agents')));
+});

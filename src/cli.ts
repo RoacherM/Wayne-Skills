@@ -8,7 +8,7 @@ import { MigrateError, migrate } from './migrate.ts';
 import { descendants, isAncestor, matchNode, newId, project, specComplete, takenIds, velocity } from './project.ts';
 import type { Tree } from './project.ts';
 import * as store from './store.ts';
-import { installSkill, removeSkill, skillPaths } from './skill.ts';
+import { ensureSkill, installSkill, removeSkill, skillPaths } from './skill.ts';
 import { runTui } from './tui.ts';
 import { KIND_LABEL, STAGE_LABEL } from './types.ts';
 import type { Event, EventType, Node, NodeKind, NodeState, Priority, Spec } from './types.ts';
@@ -863,7 +863,7 @@ function cmdHelp(): void {
       `${bold('数据')}   velocity [--weeks]`,
       `${bold('视图')}   tui · status · tree · show`,
       `${bold('协议')}   protocol（打印 PROTOCOL.md，agent 先读它再写）`,
-      `${bold('skill')}  skill install [--force] · remove · status（装进 ~/.agents/skills 与 ~/.claude/skills，npm install -g 时自动跑）`,
+      `${bold('skill')}  skill install [--force] · remove · status（装进 ~/.agents/skills 与 ~/.claude/skills；每次运行 okr 会自动补装/更新，OKR_SKIP_SKILL=1 关掉）`,
       '',
       `${bold('通用')}   --json  --today YYYY-MM-DD  --at <时间>  --demo  --by <agent>  --session <id>  --confirmed  --force`,
       `${bold('退出码')} 0 成功 · 1 错误 · 2 指代歧义 · 3 守卫拒绝/validate 失败 · 4 锁超时`,
@@ -881,10 +881,19 @@ function checkArgs(): void {
   if (todayFlag !== undefined && !isValidDate(todayFlag)) fail(`--today 需要 YYYY-MM-DD，得到 "${todayFlag}"`);
 }
 
+/** Keep the shipped skill in place without a postinstall hook (npm 11 breaks git installs that have one). Notes go to stderr so --json stays clean. */
+function autoSkill(): void {
+  const r = ensureSkill();
+  if (!r) return;
+  const verb = r.action === 'installed' ? '已装到' : '已更新';
+  console.error(dim(`okr skill ${verb} ${r.result.agents.path}（OKR_SKIP_SKILL=1 可关；okr skill status 查看）`));
+}
+
 function dispatch(): void {
 if (flag('help')) return cmdHelp();
 if (flag('version')) { console.log(PKG_VERSION); return; }
 checkArgs();
+if (cmd !== 'skill' && cmd !== 'demo') autoSkill();
 switch (cmd) {
   case 'init': cmdInit(); break;
   case 'add': cmdAdd(); break;

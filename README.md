@@ -14,7 +14,7 @@
 npm install -g github:RoacherM/Wayne-Skills
 ```
 
-装 CLI 的同时把 `okr` skill 复制到 `~/.agents/skills/okr`（Codex / Copilot / OpenCode 直接读这个目录），并给 Claude Code 建软链 `~/.claude/skills/okr`。更新就重跑同一条命令。skill 没装上或想单独处理：`okr skill install`（`--force` 覆盖开发用的软链）、`okr skill remove`、`okr skill status`；`OKR_SKIP_SKILL=1 npm install -g …` 只装 CLI。
+第一次运行任意 `okr` 命令时，CLI 把自带的 `okr` skill 复制到 `~/.agents/skills/okr`（Codex / Copilot / OpenCode 直接读这个目录），并给 Claude Code 建软链 `~/.claude/skills/okr`，stderr 提示一行。更新就重跑同一条命令，下次运行 `okr` 时自动把这份拷贝换成新版（只动自己装的那份：`~/.agents/skills/okr` 是软链或没有 `.wayne-skills` 戳记就不碰）。手动：`okr skill install`（`--force` 覆盖开发用的软链）、`okr skill remove`、`okr skill status`；`OKR_SKIP_SKILL=1` 关掉自动安装。之所以不用 npm 的 postinstall：npm 11 遇到带安装脚本的 git 包，会把全局安装做成指向临时 clone 的软链，装完即失效。
 
 也可以用 [skills CLI](https://github.com/vercel-labs/skills) 装 skill（比如要 Gemini：`npx -y --no-audit skills add RoacherM/Wayne-Skills -s okr -g -y -a gemini-cli`；`--no-audit` 是因为首次拉包时 npm 的 audit 请求在某些网络下会静默挂几分钟）。两种方式装到同一个位置，后装的覆盖先装的。
 
@@ -36,7 +36,7 @@ git clone https://github.com/RoacherM/Wayne-Skills ~/Desktop/Projects/sides/wayn
 npm install && npm link                          # okr 指向仓库，改代码即生效；会覆盖 npm install -g 装的那份，回发布版重跑 npm install -g
 npm test && npm run typecheck
 for s in ~/Desktop/Projects/sides/wayne-skills/skills/*/; do n=$(basename $s); rm -rf ~/.agents/skills/$n && ln -s $s ~/.agents/skills/$n; done   # skill 用软链，改 SKILL.md 即生效
-okr skill install                                # 只补 Claude Code 的软链；~/.agents/skills 里已是软链就不动
+okr skill install                                # 只补 Claude Code 的软链；~/.agents/skills 里已是软链就不动，自动安装也不碰软链
 ```
 
 加新 skill 看 [`skills/README.md`](skills/README.md)。

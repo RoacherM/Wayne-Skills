@@ -13,12 +13,12 @@
 需要 Node ≥ 23.6，TypeScript 由 Node 原生剥离，没有构建步骤。
 
 ```bash
-npm install -g github:RoacherM/Wayne-Skills   # CLI + okr skill 一起装；更新重跑同一条
+npm install -g github:RoacherM/Wayne-Skills   # 装 CLI；skill 在第一次运行 okr 时自动装上，更新重跑同一条
 okr skill status                               # 看 skill 装到哪了
 okr tui --demo                                 # 先用示例数据看看
 ```
 
-postinstall 把 `skills/okr` 复制到 `~/.agents/skills/okr`（Codex / Copilot / OpenCode 直接读），并建软链 `~/.claude/skills/okr`（Claude Code）。手动：`okr skill install [--force]` / `remove` / `status`；`OKR_SKIP_SKILL=1` 跳过。要 Gemini 之类别的 agent，用 skills CLI：`npx -y --no-audit skills add RoacherM/Wayne-Skills -s okr -g -y -a gemini-cli`（`--no-audit`：首次拉包时 npm audit 在某些网络下会静默挂住）。agent 用 `okr protocol` 读协议，不依赖仓库路径。
+任意 `okr` 命令运行时会检查 skill：没有就把 `skills/okr` 复制到 `~/.agents/skills/okr`（Codex / Copilot / OpenCode 直接读），并建软链 `~/.claude/skills/okr`（Claude Code）；是自己装的拷贝（带 `.wayne-skills` 戳记）且包里的 skill 变了就更新；软链或别人装的目录不碰。手动：`okr skill install [--force]` / `remove` / `status`；`OKR_SKIP_SKILL=1` 关掉自动安装（不用 npm postinstall 是因为 npm 11 会把带安装脚本的 git 全局包装成指向临时 clone 的软链）。要 Gemini 之类别的 agent，用 skills CLI：`npx -y --no-audit skills add RoacherM/Wayne-Skills -s okr -g -y -a gemini-cli`（`--no-audit`：首次拉包时 npm audit 在某些网络下会静默挂住）。agent 用 `okr protocol` 读协议，不依赖仓库路径。
 
 本地开发：
 
