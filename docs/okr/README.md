@@ -23,9 +23,9 @@ okr tui --demo                                                         # 先用�
 本地开发：
 
 ```bash
-git clone https://github.com/RoacherM/Wayne-Skills ~/Desktop/Devs/wayne-skills && cd ~/Desktop/Devs/wayne-skills && npm install && npm link   # 覆盖 npm install -g 装的那份，回发布版重跑 npm install -g
-npx -y --no-audit skills add ~/Desktop/Devs/wayne-skills -s okr -g -y -a claude-code -a codex
-for s in ~/Desktop/Devs/wayne-skills/skills/okr*/; do n=$(basename $s); rm -rf ~/.agents/skills/$n && ln -s $s ~/.agents/skills/$n; done   # 换成软链，改 SKILL.md 即生效
+git clone https://github.com/RoacherM/Wayne-Skills ~/Desktop/Projects/sides/wayne-skills && cd ~/Desktop/Projects/sides/wayne-skills && npm install && npm link   # 覆盖 npm install -g 装的那份，回发布版重跑 npm install -g
+npx -y --no-audit skills add ~/Desktop/Projects/sides/wayne-skills -s okr -g -y -a claude-code -a codex
+for s in ~/Desktop/Projects/sides/wayne-skills/skills/okr*/; do n=$(basename $s); rm -rf ~/.agents/skills/$n && ln -s $s ~/.agents/skills/$n; done   # 换成软链，改 SKILL.md 即生效
 npm test && npm run typecheck
 okr tree --demo && okr show kr1.2 --spec --demo   # 派工包长什么样
 ```

@@ -30,11 +30,11 @@ okr show kr1.2 --spec   # 派工包
 ## 本地开发
 
 ```bash
-git clone https://github.com/RoacherM/Wayne-Skills ~/Desktop/Devs/wayne-skills && cd ~/Desktop/Devs/wayne-skills
+git clone https://github.com/RoacherM/Wayne-Skills ~/Desktop/Projects/sides/wayne-skills && cd ~/Desktop/Projects/sides/wayne-skills
 npm install && npm link                          # okr 指向仓库，改代码即生效；会覆盖 npm install -g 装的那份，回发布版重跑 npm install -g
 npm test && npm run typecheck
-npx -y --no-audit skills add ~/Desktop/Devs/wayne-skills -s '*' -g -y -a claude-code -a codex
-for s in ~/Desktop/Devs/wayne-skills/skills/*/; do n=$(basename $s); rm -rf ~/.agents/skills/$n && ln -s $s ~/.agents/skills/$n; done   # 换成软链，改 SKILL.md 即生效
+npx -y --no-audit skills add ~/Desktop/Projects/sides/wayne-skills -s '*' -g -y -a claude-code -a codex
+for s in ~/Desktop/Projects/sides/wayne-skills/skills/*/; do n=$(basename $s); rm -rf ~/.agents/skills/$n && ln -s $s ~/.agents/skills/$n; done   # 换成软链，改 SKILL.md 即生效
 ```
 
 加新 skill 看 [`skills/README.md`](skills/README.md)。
