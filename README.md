@@ -4,7 +4,6 @@
 
 | skill | 做什么 | 依赖 |
 |---|---|---|
-| `deep-think` | `/deep-think design\|review <topic>`：用 OpenRouter 上的 GPT-5.x 做第一性原理的架构推演，Why → What → How → Quality → Proof 五层 | `OPENROUTER_API_KEY`、curl、jq |
 | `okr` | 替用户记目标 / KR / 任务 / 习惯的进展，看板、评估、拆解、周计划、派工 | `okr` CLI（本仓库） |
 | `okr-executor` | 执行 agent 拿到 okr 派工包后只回写 claim / block / log / submit | `okr` CLI（本仓库） |
 
