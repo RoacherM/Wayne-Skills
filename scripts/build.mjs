@@ -1,6 +1,8 @@
 // Bundle the CLI into one plain-JS file inside the skill (skills/okr/scripts/okr.js), so a skill install
 // (`npx skills add …`) carries a runnable CLI with no npm step and no TypeScript stripping (Node ≥ 20).
-// package.json version and docs/okr/PROTOCOL.md are baked in. Run `npm run build` after changing src/ or the protocol;
+// package.json version and docs/okr/PROTOCOL.md are baked in. Run `npm run bundle` after changing src/ or the protocol;
+// (the script is named `bundle`, not `build`: npm's pacote treats a `build` script like an install script and then
+// npm 11 links a global git install to its temp clone, which breaks `npm install -g github:…`).
 // test/bundle.test.ts fails when the committed bundle is stale.
 import { build } from 'esbuild';
 import { chmodSync, readFileSync } from 'node:fs';

@@ -23,7 +23,7 @@ okr tui --demo                                                                  
 本地开发：
 
 ```bash
-git clone https://github.com/RoacherM/Wayne-Skills ~/Desktop/Projects/sides/wayne-skills && cd ~/Desktop/Projects/sides/wayne-skills && npm install && npm link   # okr 指向源码（Node ≥ 23.6）；覆盖 npm install -g 装的那份，回发布版重跑 npm install -g。改了 src/ 或 PROTOCOL.md 后 npm run build 重新打包 skills/okr/scripts/okr.js
+git clone https://github.com/RoacherM/Wayne-Skills ~/Desktop/Projects/sides/wayne-skills && cd ~/Desktop/Projects/sides/wayne-skills && npm install && npm link   # okr 指向源码（Node ≥ 23.6）；覆盖 npm install -g 装的那份，回发布版重跑 npm install -g。改了 src/ 或 PROTOCOL.md 后 npm run bundle 重新打包 skills/okr/scripts/okr.js
 rm -rf ~/.agents/skills/okr && ln -s ~/Desktop/Projects/sides/wayne-skills/skills/okr ~/.agents/skills/okr && okr skill install   # skill 用软链，改 SKILL.md 即生效；install 只补 Claude Code 软链
 npm test && npm run typecheck
 okr tree --demo && okr show kr1.2 --spec --demo   # 派工包长什么样

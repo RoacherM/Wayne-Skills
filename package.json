@@ -16,7 +16,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "node scripts/build.mjs",
+    "bundle": "node scripts/build.mjs",
     "demo": "node bin/okr.js tui --demo",
     "typecheck": "tsc --noEmit",
     "test": "node --test test/"

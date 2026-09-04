@@ -39,7 +39,7 @@ okr show kr1.2 --spec   # 派工包
 ```bash
 git clone https://github.com/RoacherM/Wayne-Skills ~/Desktop/Projects/sides/wayne-skills && cd ~/Desktop/Projects/sides/wayne-skills
 npm install && npm link                          # okr 指向仓库源码（跑源码要 Node ≥ 23.6），改代码即生效；会覆盖 npm install -g 装的那份，回发布版重跑 npm install -g
-npm run build                                    # 改了 src/ 或 PROTOCOL.md 后重新打包 skills/okr/scripts/okr.js，测试会检查它没过期
+npm run bundle                                    # 改了 src/ 或 PROTOCOL.md 后重新打包 skills/okr/scripts/okr.js，测试会检查它没过期
 npm test && npm run typecheck
 for s in ~/Desktop/Projects/sides/wayne-skills/skills/*/; do n=$(basename $s); rm -rf ~/.agents/skills/$n && ln -s $s ~/.agents/skills/$n; done   # skill 用软链，改 SKILL.md 即生效
 okr skill install                                # 只补 Claude Code 的软链；~/.agents/skills 里已是软链就不动，自动安装也不碰软链

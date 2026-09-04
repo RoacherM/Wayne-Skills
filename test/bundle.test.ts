@@ -5,7 +5,7 @@ import { test } from 'node:test';
 // @ts-ignore plain JS build script
 import { bundleText, OUT } from '../scripts/build.mjs';
 
-test('committed bundle matches the source (run `npm run build` when this fails)', async () => {
+test('committed bundle matches the source (run `npm run bundle` when this fails)', async () => {
   const fresh = await bundleText();
   assert.equal(readFileSync(OUT, 'utf8'), fresh, `${OUT} is stale`);
   assert.ok(statSync(OUT).mode & 0o111, 'bundle is executable');
