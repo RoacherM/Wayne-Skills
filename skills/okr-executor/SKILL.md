@@ -8,7 +8,7 @@ description: "执行 agent 拿到 okr 派工包（`okr show <id> --spec` 输出�
 你是执行 agent：用户（或用户的 okr 助手）把一个任务的派工包贴给了你，你在自己的窗格 / worktree 里把任务做完，并用 `okr` 回写四种事件。规则的出处是协议 §9 / §10，先读：
 
 ```bash
-okr protocol 2>/dev/null || cat "$(dirname "$(readlink -f "$(command -v okr)")")/../docs/okr/PROTOCOL.md"
+okr protocol
 ```
 
 没有 `okr` 命令：`npm install -g github:RoacherM/Wayne-Skills`（Node ≥ 23.6）。
@@ -19,7 +19,7 @@ okr protocol 2>/dev/null || cat "$(dirname "$(readlink -f "$(command -v okr)")")
 
 1. **开工先领取**：`okr claim <id> --by <agent> --session <session> --json`。退出码 3 且说已被领取：停下回报用户，不 `--force`。
 2. **卡住就记**：`okr block <id> "卡在哪" --by … --session … --json`。
-3. **关键进展才记**：`okr log <id> "…" --by … --session … --json`。解除阻塞、方案定了、验证跑过算关键；日常小步骤不记。
+3. **关键进展才记**：`okr log <id> "…" --by … --session … --json`。解除阻塞、方案定了、验证跑过算关键；日常小步骤不记。任一事件都自动解除阻塞，没有专门的 unblock 命令。
 4. **验证过、PR 提了再提交**：`okr submit <id> --link <PR 链接> --by … --session … --json`。派工包里的验证命令必须先通过；没有 `--link` 会被拒绝。
 
 ## 不做的事
@@ -33,7 +33,7 @@ okr protocol 2>/dev/null || cat "$(dirname "$(readlink -f "$(command -v okr)")")
 
 - **验收标准与验证命令**：submit 前逐条自查，验证命令的输出贴进 PR。
 - **依赖及完成状态**：`[ ]` 未完成的依赖就别开工，回报。
-- **历史 submit 链接与 reject 意见**：重派的任务先把上次被打回的点改掉。
+- **历史 submit 链接与 reject 意见**：重派的任务先把上次被打回的点改掉。被打回后 `claimed` 已清空，重新开工要再 `claim` 一次。
 
 ## 回复格式
 

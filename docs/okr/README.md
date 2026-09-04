@@ -14,17 +14,17 @@
 
 ```bash
 npm install -g github:RoacherM/Wayne-Skills                                    # CLI，之后全局可用 okr
-npx -y skills add RoacherM/Wayne-Skills -s okr -s okr-executor -g -y -a claude-code -a codex   # 两个 okr skill，装到 ~/.agents/skills/<name>
+npx -y --no-audit skills add RoacherM/Wayne-Skills -s okr -s okr-executor -g -y -a claude-code -a codex   # 两个 okr skill，装到 ~/.agents/skills/<name>
 okr tui --demo                                                         # 先用示例数据看看
 ```
 
-仓库里还有别的 skill（见 `skills/README.md`），`-s '*'` 全装，`-l` 只列不装。装到 `~/.agents/skills/<name>`：Codex / Copilot / OpenCode 直接读这个目录，Claude Code 由 `~/.claude/skills/<name>` 软链过去。要 Gemini 就再加 `-a gemini-cli`。更新时 CLI 重跑 `npm install -g github:RoacherM/Wayne-Skills`，skill 跑 `npx -y skills update`。agent 用 `okr protocol` 读协议，不依赖仓库路径。
+仓库里还有别的 skill（见 `skills/README.md`），`-s '*'` 全装，`-l` 只列不装。装到 `~/.agents/skills/<name>`：Codex / Copilot / OpenCode 直接读这个目录，Claude Code 由 `~/.claude/skills/<name>` 软链过去。要 Gemini 就再加 `-a gemini-cli`。更新时 CLI 重跑 `npm install -g github:RoacherM/Wayne-Skills`，skill 跑 `npx -y --no-audit skills update`（`--no-audit`：首次拉包时 npm audit 在某些网络下会静默挂住）。agent 用 `okr protocol` 读协议，不依赖仓库路径。
 
 本地开发：
 
 ```bash
-git clone https://github.com/RoacherM/Wayne-Skills ~/Desktop/Devs/wayne-skills && cd ~/Desktop/Devs/wayne-skills && npm install && npm link
-npx -y skills add ~/Desktop/Devs/wayne-skills -s okr -s okr-executor -g -y -a claude-code -a codex
+git clone https://github.com/RoacherM/Wayne-Skills ~/Desktop/Devs/wayne-skills && cd ~/Desktop/Devs/wayne-skills && npm install && npm link   # 覆盖 npm install -g 装的那份，回发布版重跑 npm install -g
+npx -y --no-audit skills add ~/Desktop/Devs/wayne-skills -s okr -s okr-executor -g -y -a claude-code -a codex
 for s in ~/Desktop/Devs/wayne-skills/skills/okr*/; do n=$(basename $s); rm -rf ~/.agents/skills/$n && ln -s $s ~/.agents/skills/$n; done   # 换成软链，改 SKILL.md 即生效
 npm test && npm run typecheck
 okr tree --demo && okr show kr1.2 --spec --demo   # 派工包长什么样
@@ -36,7 +36,7 @@ okr tree --demo && okr show kr1.2 --spec --demo   # 派工包长什么样
 okr init
 okr add o1  --name 推荐系统上线 --kind objective --area 工作 --start 2026-07-01 --end 2026-09-30 --confirmed
 okr add kr1 --name 模型精度 --parent o1 --metric %:76:95 --weight 2 --confirmed
-okr add     --name 用户分群特征 --parent kr1 --priority P1 --deadline 2026-09-05 --week 2026-W36 \
+okr add     --name 用户分群特征 --parent kr1 --kind task --priority P1 --deadline 2026-09-05 --week 2026-W36 \
             --goal "…" --accept "AUC +0.5" --accept "单测通过" --verify "make test" --link https://…/issues/12 --confirmed
 okr add h1  --name 跑步 --kind habit --cadence 3/week --confirmed
 
@@ -52,7 +52,7 @@ okr block m1.1 "等数据接口"
 
 okr edit kr1.1 --priority P0 --week none      # none 清空字段
 okr move kr1.3 --to m1 --confirmed
-okr rm t9 --confirmed                         # 只删没事件的节点，其余 edit --status canceled
+okr rm t9 --confirmed                         # 只删没事件（自身 add/edit 的 change 除外）、没子节点、没人依赖的节点，其余 edit --status canceled
 okr repo add ~/Projects/recsys --node kr1
 
 okr             # TUI：看板 / 树 / 事件，⏎ 钻进节点详情
@@ -67,7 +67,7 @@ okr validate            # 数据、iCloud 冲突副本、git 健康
 okr migrate             # 旧 goals.yaml 迁到新模型
 ```
 
-节点可以用 id 或名字关键词指代。匹配到多个时列出候选并退出码 2，不猜。
+节点可以用 id 或名字关键词指代。匹配到多个时列出候选并退出码 2，不猜；没有匹配也是退出码 2（`--json` 里 `candidates` 为空）。
 
 通用参数：`--json`（读写都支持，错误也是 JSON）、`--today 2026-03-15`（只影响读，写命令传了直接拒绝）、`--at`（补记时间，给日期就是那一天，晚于今天或晚于当前 5 分钟以上的时间拒绝）、`--by`（缺省 `OKR_BY`）、`--session`、`--confirmed`、`--force`、`--demo`。时间戳一律要求本地时区显式偏移（如 `+08:00`），别的格式会被自动规整。`OKR_DIR=…` 换数据目录。不认识的 `--flag` 直接拒绝。冻结 / 取消的节点（含继承自祖先）默认拒绝事件类写入（log / done / claim 等），`--force` 放行；add / edit / move 不受影响。退出码：0 成功，1 错误，2 指代歧义，3 守卫拒绝或 validate 失败，4 锁超时。
 

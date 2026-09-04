@@ -150,7 +150,7 @@ drop: [t39]                 # 遗留任务退出本周，清空 week
 - `--session` 由执行 agent 自定任意字符串（如 worktree 名），claim 的 `--json` 回显。
 - 所有写命令先取锁。Node 没有 `flock`，用独占创建（`O_EXCL`）的锁文件代替：`$TMPDIR/okr-<目录哈希>.lock`，内容为持有者 pid，不进 iCloud；持有者进程已死（`kill -0` 失败）则回收；锁文件为空或刚创建不足 2 秒（还在被写入）也视为可回收，回收用 rename 到当前 pid 专属后缀再删，避免并发回收者互相踩。每 50ms 重试，5 秒超时退出码 4。写命令在锁内重新读文件再校验再写，回调内部不 `process.exit`（改抛异常在锁外统一处理），保证锁一定在 finally 里释放。`nodes.yaml` 写临时文件再 rename；`events.jsonl` 单次 write 追加。
 - 目标指代歧义：列候选，退出码 2，不猜。
-- 去重：只与同一节点同一天同类型的上一条比较，内容相近则拒绝；`value` 或 `links` 不同、或中间有其他类型事件即豁免。`--force` 跳过。
+- 去重：只与同一节点同一天同类型的上一条比较，内容相近则拒绝；`value` 或 `links` 不同、或中间有其他类型事件即豁免。`--force` 跳过。 `check` 例外：同一节点同一天已有 check 就拒绝，不看中间事件（补记打卡不能绕过）。
 - assess 无理由：拒绝。assess 对 metric 带 value：拒绝。
 - 结构变更（add / move / rm / apply）和 KR / objective / milestone 的 done：要 `--confirmed`。`--confirmed` 是协议不是防线，由 skill 在用户点头后传，记进事件供审计。
 - submit 无 link：拒绝。submit 只对 task 有意义，非 task 拒绝。block 只对 task / milestone 有意义，其余节点拒绝。habit 没有 done，不再做就 `edit --status canceled`。reject 只放行「有 submit 或 stage 为 done」的节点，不限节点 kind（reopen 已完成的 KR / objective / milestone 需 `--confirmed`，见上文）。claim 一个 stage 为 done 的任务：拒绝。assess 同样要过冻结/取消守卫（同一节点同一天重复 assess 视为去重，`--force` 跳过）。

@@ -8,7 +8,7 @@ description: "通过 okr CLI 替用户记录目标 / KR / 任务 / 习惯的进�
 用户的目标与任务追踪在 `~/.okr`，命令行工具 `okr`（仓库 github.com/RoacherM/Wayne-Skills，本 skill 在其 `skills/okr/`，执行 agent 用同仓库的 `okr-executor`）。规则全部在协议文档里，先读它再动手：
 
 ```bash
-okr protocol 2>/dev/null || cat "$(dirname "$(readlink -f "$(command -v okr)")")/../docs/okr/PROTOCOL.md"
+okr protocol
 ```
 
 没有 `okr` 命令：`npm install -g github:RoacherM/Wayne-Skills`（Node ≥ 23.6）。没有 `~/.okr/nodes.yaml`：问用户是否 `okr init`，旧 `goals.yaml` 走 `okr migrate`。
@@ -37,7 +37,7 @@ okr protocol 2>/dev/null || cat "$(dirname "$(readlink -f "$(command -v okr)")")
 
 ## 回复格式
 
-- 写入成功：一行，说记到了哪个节点、什么事件，附推导变化（`show --json` 的 `progress` / `stage`）。例：「记到 kr1：精度 86%（53% → 58%）」。
+- 写入成功：一行，说记到了哪个节点、什么事件，附推导变化（写命令的 `--json` 返回里就有 `progress` / `stage`，写前 `show --json` 拿一次基线即可）。例：「记到 kr1：精度 86%（53% → 58%）」。
 - 多条更新一句话里：先解析成列表给用户看，确认后按顺序写，逐条一行。
 - 看板：直接 `okr status` 的人类输出贴出来（终端能显示 ANSI），再补一两句要关注的。
 - 提案：任务名、优先级、截止、所属、一句为什么；不要在用户确认前写入。

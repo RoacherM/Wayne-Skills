@@ -1,10 +1,10 @@
 # skills
 
-每个子目录一个 skill，`SKILL.md` 是入口，`evals/evals.json` 是触发与行为用例。`npx skills add RoacherM/Wayne-Skills` 会发现这里的全部 skill；`-s '*'` 全装，`-s <name>` 只装指定的（可重复），`-l` 只列不装，不带 `-s` 会进交互多选。
+每个子目录一个 skill，`SKILL.md` 是入口，`evals/evals.json` 是触发与行为用例（okr 系列有，`deep-think` 暂无）。`npx -y --no-audit skills add RoacherM/Wayne-Skills` 会发现这里的全部 skill；`-s '*'` 全装，`-s <name>` 只装指定的（可重复），`-l` 只列不装，不带 `-s` 会进交互多选。
 
 | skill | 给谁 | 做什么 |
 |---|---|---|
-| `deep-think` | 做架构设计 / 评审的对话 agent | `/deep-think design|review`，用 OpenRouter 上的 GPT-5.x 做第一性原理推演（需要 `OPENROUTER_API_KEY`、curl、jq） |
+| `deep-think` | 做架构设计 / 评审的对话 agent | `/deep-think design\|review`，用 OpenRouter 上的 GPT-5.x 做第一性原理推演（需要 `OPENROUTER_API_KEY`、curl、jq） |
 | `okr` | 用户的日常对话 agent | 记进展、看板、评估、拆解、周计划、结构变更、派工（协议 §2–§8） |
 | `okr-executor` | 拿到派工包的执行 agent | 只回写 claim / block / log / submit（协议 §9、§10） |
 

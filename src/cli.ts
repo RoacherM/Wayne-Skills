@@ -56,11 +56,13 @@ const json = args.flags.json === true;
 const demo = args.flags.demo === true;
 const cols = process.stdout.columns || 100;
 
+const PKG_VERSION: string = JSON.parse(readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '..', 'package.json'), 'utf8')).version;
+
 const KNOWN_FLAGS = new Set([
   'json', 'demo', 'today', 'by', 'session', 'confirmed', 'force', 'at', 'link', 'hours', 'body', 'repo', 'commit',
   'value', 'node', 'days', 'weeks', 'all', 'spec', 'merge-events', 'kind', 'name', 'area', 'parent', 'start', 'end',
   'weight', 'status', 'metric', 'unit', 'from', 'to', 'cadence', 'habit', 'priority', 'deadline', 'dep', 'deps',
-  'week', 'order', 'goal', 'accept', 'verify', 'reason', 'limit', 'help',
+  'week', 'order', 'goal', 'accept', 'verify', 'reason', 'limit', 'help', 'version',
 ]);
 
 const str = (k: string): string | undefined => {
@@ -211,6 +213,11 @@ const norm = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
 function dedupGuard(events: Event[], e: Event): void {
   if (force || !e.node) return;
   const own = sortEvents(events.filter((x) => x.node === e.node));
+  if (e.type === 'check') {
+    const same = own.find((x) => x.type === 'check' && dayOf(x.ts) === dayOf(e.ts));
+    if (same) fail(`${dayOf(same.ts)} 已经打过卡。确认要再记一次就加 --force。`, 3, { duplicate: same });
+    return;
+  }
   const prev = own[own.length - 1];
   if (!prev || prev.type !== e.type || dayOf(prev.ts) !== dayOf(e.ts)) return;
   if (prev.value !== e.value) return;
@@ -407,7 +414,7 @@ function cmdInit(): void {
 }
 
 const ADD_USAGE =
-  '用法: okr add [id] --name 名称 --kind objective|metric|milestone|task|habit [--parent id] [--area 领域] [--metric 单位:起点:目标] [--cadence 3/week] [--priority P1] [--deadline 日期] [--dep id] [--week 2026-W36] [--goal … --accept … --verify … --link …] --confirmed';
+  '用法: okr add [id] --name 名称 --kind objective|metric|milestone|task|habit [--parent id] [--area 领域] [--start 日期 --end 日期] [--weight N] [--status active|frozen|canceled] [--metric 单位:起点:目标] [--cadence 3/week] [--priority P1] [--deadline 日期] [--dep id] [--week 2026-W36] [--goal … --accept … --verify … --link …] --confirmed';
 
 function cmdAdd(): void {
   write((nodes, events) => {
@@ -547,7 +554,7 @@ function cmdRepo(): void {
     }
     if (!existsSync(path) || !statSync(path).isDirectory()) fail(`目录不存在: ${path}`);
     const warnings: string[] = [];
-    if (!existsSync(resolve(path, '.git'))) warnings.push('目录里没有 .git，commits 命令会跳过它');
+    if (!existsSync(resolve(path, '.git'))) warnings.push('目录里没有 .git，提交提取（okr commits，待实现）会跳过它');
     const node = str('node');
     if (node && !nodes.some((n) => n.id === node)) fail(`节点不存在: ${node}`);
     const next = repos.filter((r) => r.path !== path);
@@ -734,10 +741,10 @@ function showSpec(t: Tree, s: NodeState): void {
   const agent = by ?? '<agent>';
   const sess = session ?? '<session>';
   const commands = [
-    `okr claim ${n.id} --by ${agent} --session ${sess}`,
-    `okr block ${n.id} "卡在哪" --by ${agent} --session ${sess}`,
-    `okr log ${n.id} "解除阻塞 / 关键进展" --by ${agent} --session ${sess}`,
-    `okr submit ${n.id} --link <PR> --by ${agent} --session ${sess}`,
+    `okr claim ${n.id} --by ${agent} --session ${sess} --json`,
+    `okr block ${n.id} "卡在哪" --by ${agent} --session ${sess} --json`,
+    `okr log ${n.id} "解除阻塞 / 关键进展" --by ${agent} --session ${sess} --json`,
+    `okr submit ${n.id} --link <PR> --by ${agent} --session ${sess} --json`,
   ];
   const pathIds: string[] = [];
   let p = s.parent;
@@ -774,6 +781,7 @@ function showSpec(t: Tree, s: NodeState): void {
         L.push('', '## 打回意见');
         for (const x of rejects) L.push(`- ${dayOf(x.ts)}：${x.note}${x.body ? '\n  ' + x.body.replace(/\n/g, '\n  ') : ''}`);
       }
+      if (s.dispatchable) L.push('', '> 可派工');
       if (!s.dispatchable) L.push('', `> 不可派工：${specMissing(n).length ? 'spec 缺 ' + specMissing(n).join('、') : deps.some((d) => !d.done) ? '依赖未完成' : s.stage === 'done' ? '已完成' : '状态非 active'}`);
       L.push('', '## 回写命令（照抄）', '```');
       L.push(...commands);
@@ -822,7 +830,7 @@ function cmdHelp(): void {
       `${bold('通用')}   --json  --today YYYY-MM-DD  --at <时间>  --demo  --by <agent>  --session <id>  --confirmed  --force`,
       `${bold('退出码')} 0 成功 · 1 错误 · 2 指代歧义 · 3 守卫拒绝/validate 失败 · 4 锁超时`,
       '',
-      dim(`数据目录 ${store.DIR}（OKR_DIR 可改）。详见 docs/okr/DESIGN.md。`),
+      dim(`数据目录 ${store.DIR}（OKR_DIR 可改）。协议 okr protocol；设计 github.com/RoacherM/Wayne-Skills/blob/main/docs/okr/DESIGN.md。`),
     ].join('\n'),
   );
 }
@@ -837,6 +845,7 @@ function checkArgs(): void {
 
 function dispatch(): void {
 if (flag('help')) return cmdHelp();
+if (flag('version')) { console.log(PKG_VERSION); return; }
 checkArgs();
 switch (cmd) {
   case 'init': cmdInit(); break;
@@ -867,6 +876,7 @@ switch (cmd) {
     void runTui({ load: () => ({ nodes: DEMO_NODES, events: DEMO_EVENTS }), today: DEMO_TODAY, readOnly: true });
     break;
   case 'help': case '-h': cmdHelp(); break;
+  case 'version': case '-v': console.log(PKG_VERSION); break;
   default:
     fail(`未知命令 ${cmd}。okr help 看用法。`);
 }

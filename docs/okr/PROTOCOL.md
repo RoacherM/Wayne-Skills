@@ -11,9 +11,9 @@
 ## 1. 环境与约定
 
 - 数据目录 `OKR_DIR`，缺省 `~/.okr`。没有 `nodes.yaml` 就先问用户是否 `okr init`（旧 `goals.yaml` 用 `okr migrate`）。
-- `--by <agent>` 标记写入者：Claude Code 用 `claude`，Codex 用 `codex`，Gemini 用 `gemini`，执行 agent 用派工包里给的名字。可以用环境变量 `OKR_BY` 代替。
+- `--by <agent>` 标记写入者：Claude Code 用 `claude`，Codex 用 `codex`，Gemini 用 `gemini`，执行 agent 用派工包里给的名字。每条命令显式传，不依赖环境变量 `OKR_BY`（agent 的 shell 环境不持久）。
 - `--json` 读写都支持，错误也是 JSON（`{ok:false,error,code}`）。人类可读输出只给用户看，agent 解析 JSON。
-- 退出码：0 成功；1 一般错误；2 指代歧义（JSON 里带 `candidates`）；3 守卫拒绝或 validate 失败；4 锁超时（等一秒重试一次，再失败就报给用户）。
+- 退出码：0 成功；1 一般错误；2 指代歧义或没有匹配（JSON 里带 `candidates`，为空即没有这个节点）；3 守卫拒绝或 validate 失败；4 锁超时（等一秒重试一次，再失败就报给用户）。
 - 时间：事件时间 `ts` 缺省为写入时刻。用户说的是之前发生的事（「昨天跑完了」「上周提的 PR」），传 `--at 2026-09-02`（日期取当天中午，今天取当前时刻）或完整本地时间 `--at 2026-09-02T21:00:00+08:00`。未来时间会被拒绝。
 - `--today` 只给读命令做「假装今天是」用，写命令传了会被拒绝。`--demo` 是只读示例数据。
 - 节点可以用 id 或名字关键词指代。CLI 匹配到多个会退出码 2 并列出候选，agent 把候选列给用户选，不自己猜。
@@ -30,7 +30,7 @@ DESIGN.md §8 分五步开发，目前到第 2 步。协议按最终形态写，
 | `status` `velocity` `protocol` | 可用 | |
 | `tui` | 可用，仅限终端 | 需要 TTY，agent 环境下退出 1，agent 用 `status` / `tree` |
 | `brief` | 待实现（§8 步 3） | `okr tree --json` 过滤 task 的 `flags`（overdue / due-soon / blocked / stale / review-stale / claimed / carry-over）；`okr status --json` 只有根节点，看 `health`；`okr recent --days 7 --json` 看动静 |
-| `week` | 待实现 | `okr tree --json`，过滤 `planned` 与 `carryOver` 为 true 的 task，按 `order` 排 |
+| `week` | 待实现 | `okr tree --json`，过滤 `planned` 或 `carryOver` 为 true 的 task，按 `order` 排（没设 `order` 的没有这个字段，排最后） |
 | `candidates [--dispatchable]` | 待实现 | `okr tree --json`，过滤 task 的 `stage != done`，`dispatchable` 字段已有 |
 | `apply --from plan.yaml` / `--dismiss` | 待实现 | 用户确认提案后逐条 `okr add … --week … --confirmed` 与 `okr edit <id> --week … --order N` 落地 |
 | `commits` `changes` `report` `deliver notes` | 待实现（§8 步 3–4） | 需要提交列表时 agent 自己 `git -C <repo> log --since` |
@@ -44,9 +44,9 @@ DESIGN.md §8 分五步开发，目前到第 2 步。协议按最终形态写，
 ## 3. 写之前
 
 1. **指代**：确定目标节点。用户说的名字不唯一就把候选列出来问，不猜。
-2. **查重**：`okr recent --node <id> --days 7 --json`。CLI 只挡同一天同类型字面相近的重复；「用户上午说了 AUC 到 0.8，下午又提一遍」这类语义重复是 agent 的事，已经记过的不再写。用户明确说「再记一条」才加 `--force`。
+2. **查重**：`okr recent --node <id> --days 7 --json`。CLI 只拿节点的上一条事件比：同一天、同类型、字面相近才拒，中间隔了别的事件就不拦（habit 的 `check` 例外，同一天只收一次）；「用户上午说了 AUC 到 0.8，下午又提一遍」这类语义重复是 agent 的事，已经记过的不再写。用户明确说「再记一条」才加 `--force`。
 3. **归属**：这句话属于哪个任务、哪个 KR，由 agent 判断。看树（`okr tree --json`）、看仓库的 `.okr.yaml`、看最近事件。判断错了直接改：事件不删，补一条正确的，`note` 里说明「上一条记错节点」。
-4. **数值只由用户口述**：metric 的 `--value`、任务的 `--hours`，用户没说就不写，不要从 PR、日志或上下文推算。
+4. **数值只由用户口述**：metric 的 `--value`、任务的 `--hours`，用户没说就不写，不要从 PR、日志或上下文推算。「应该到 90 了吧」这类猜测语气先确认是不是实测值，确认前不写。
 
 ## 4. 用户的话 → 事件
 
@@ -58,7 +58,7 @@ DESIGN.md §8 分五步开发，目前到第 2 步。协议按最终形态写，
 | KR / 目标 / 里程碑完成了 | 先问「确认 <名字> 完成？」，用户点头后 `okr done <id> --confirmed` |
 | 卡住了、等人、等接口 | `okr block <id> "卡在哪"`（只对 task / milestone） |
 | 不卡了、恢复了 | `okr log <id> "解除阻塞：…"`。任一阶段事件都解除阻塞，不需要专门命令 |
-| 验收不通过、要改 | `okr reject <task> "意见"`，任务回进行中 |
+| 验收不通过、要改 | `okr reject <task> "意见"`，任务回进行中，`claimed` 清空，重派要执行 agent 重新 `claim` |
 | 已完成的任务要重新打开 | `okr reject <id> "原因"`；非 task 加 `--confirmed` |
 | 习惯打卡 | `okr check <habit> [--at 日期]` |
 | 习惯不做了 | `okr edit <habit> --status canceled --confirmed`（习惯没有 done） |
@@ -102,6 +102,7 @@ drop: [t39]                 # 遗留任务退出本周，清空 week
 `add` / `move` / `rm` / `apply` 都要 `--confirmed`。`--confirmed` 是「用户点过头」的记录，不是防线：agent 先把要做的事说清楚，用户同意后才传。`edit` 改字段不需要；把 `status` 改成 canceled CLI 不强制，但协议上要用户点头，点头后同样带 `--confirmed` 记入审计。
 
 - `okr add --name … --kind objective|metric|milestone|task|habit --parent <id> …`。有 `--parent` 也要显式 `--kind`，只有 `--metric 单位:from:to` 或 `--cadence 3/week` 能推出 kind。
+- objective / metric / milestone 字段：`--area` `--start` `--end` `--weight` `--status active|frozen|canceled`；metric 还有 `--metric 单位:from:to`（或 `--unit` `--from` `--to`），habit 有 `--cadence`。
 - 任务字段：`--priority P0-P3` `--deadline` `--week 2026-W36` `--order` `--dep <id>`（可重复）`--goal` `--accept` `--verify` `--link`。
 - `--week none` 这类 `none` 清空字段。
 - `rm` 只能删没有事件、没有子节点、没人依赖的节点，其余用 `edit --status canceled --confirmed`。
@@ -139,7 +140,7 @@ node: kr1          # 这个仓库的工作默认记到哪个节点
 
 | 退出码 / 报错 | 做法 |
 |---|---|
-| 2 歧义，带 `candidates` | 列给用户选 |
+| 2 歧义，带 `candidates` | 非空就列给用户选；为空说明没有这个节点，问用户是不是要新建 |
 | 3 「内容相近」 | 默认当重复，告诉用户已记过；用户坚持再 `--force` |
 | 3 已冻结 / 已取消 | 告诉用户，问解冻还是照记 |
 | 3 需要 `--confirmed` | 把要做的事说给用户，点头后加上重跑 |
