@@ -1,10 +1,13 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { basename, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { bold, color, dim, GREEN, RED, STAGE_SYM } from './ansi.ts';
-import { dayOf, daysBetween, isValidDate, isValidWeek, nowIso, parseTs, sortEvents, todayIso, tsMs } from './dates.ts';
+import YAML from 'yaml';
+import { AMBER, bold, color, dim, GRAY, GREEN, HEALTH, RED, STAGE_SYM } from './ansi.ts';
+import { addDays, dayOf, daysBetween, isValidDate, isValidWeek, nowIso, parseTs, sortEvents, todayIso, tsMs } from './dates.ts';
 import { DEMO_EVENTS, DEMO_NODES, DEMO_TODAY } from './demo.ts';
 import { MigrateError, migrate } from './migrate.ts';
+import { applyPlan, brief, candidates, changes, PlanError, proposalFiles, repoCommits, reportData, resolveSince, weekView } from './plan.ts';
+import type { TaskFacts } from './plan.ts';
 import { descendants, isAncestor, matchNode, newId, project, specComplete, takenIds, velocity } from './project.ts';
 import type { Tree } from './project.ts';
 import * as store from './store.ts';
@@ -14,7 +17,7 @@ import { KIND_LABEL, STAGE_LABEL } from './types.ts';
 import type { Event, EventType, Node, NodeKind, NodeState, Priority, Spec } from './types.ts';
 import { mergeEventFiles, validateData, validateDir } from './validate.ts';
 import type { MergeResult } from './validate.ts';
-import { pct, rootIndex } from './views/common.ts';
+import { flagTags, pct, rootIndex } from './views/common.ts';
 import { renderDetail } from './views/detail.ts';
 import { renderEvents } from './views/events.ts';
 import { renderStatus } from './views/status.ts';
@@ -67,7 +70,7 @@ const KNOWN_FLAGS = new Set([
   'json', 'demo', 'today', 'by', 'session', 'confirmed', 'force', 'at', 'link', 'hours', 'body', 'repo', 'commit',
   'value', 'node', 'days', 'weeks', 'all', 'spec', 'merge-events', 'kind', 'name', 'area', 'parent', 'start', 'end',
   'weight', 'status', 'metric', 'unit', 'from', 'to', 'cadence', 'habit', 'priority', 'deadline', 'dep', 'deps',
-  'week', 'order', 'goal', 'accept', 'verify', 'reason', 'limit', 'help', 'version', 'dir',
+  'week', 'order', 'goal', 'accept', 'verify', 'reason', 'limit', 'help', 'version', 'dir', 'since', 'dismiss', 'dispatchable',
 ]);
 
 const str = (k: string): string | undefined => {
@@ -559,7 +562,7 @@ function cmdRepo(): void {
     }
     if (!existsSync(path) || !statSync(path).isDirectory()) fail(`目录不存在: ${path}`);
     const warnings: string[] = [];
-    if (!existsSync(resolve(path, '.git'))) warnings.push('目录里没有 .git，提交提取（okr commits，待实现）会跳过它');
+    if (!existsSync(resolve(path, '.git'))) warnings.push('目录里没有 .git，okr commits 会跳过它');
     const node = str('node');
     if (node && !nodes.some((n) => n.id === node)) fail(`节点不存在: ${node}`);
     const next = repos.filter((r) => r.path !== path);
@@ -690,6 +693,247 @@ function cmdVelocity(): void {
   ok({ weeks: v }, () => {
     console.log(dim(' 周          完成  用时'));
     for (const w of v) console.log(` ${w.week}   ${String(w.done).padStart(4)}  ${w.hours === null ? dim('—') : `${w.hours}h`}  ${dim(w.ids.join(' '))}`);
+  });
+}
+
+// ── commands: planning data ───────────────────────────
+// Facts for the skill (DESIGN §3 / PROTOCOL §2 §6). Ranking and wording stay in the agent.
+const weekFlag = (t: Tree): string => {
+  const w = str('week');
+  if (w === undefined) return t.week;
+  if (!isValidWeek(w)) fail(`--week 格式：2026-W36，得到 "${w}"`);
+  return w;
+};
+
+function taskLine(f: TaskFacts, opts: { order?: boolean } = {}): string {
+  const st = STAGE_SYM[f.stage];
+  const bits = [
+    opts.order ? dim(f.order === null ? ' -' : String(f.order).padStart(2)) : '',
+    color(st.c, st.sym),
+    bold(f.id),
+    f.name,
+    f.priority ? dim(f.priority) : '',
+    f.deadline ? (f.daysLeft !== null && f.daysLeft < 0 ? color(RED, `~${f.deadline}`) : dim(`~${f.deadline}`)) : '',
+    flagTags(f.flags.filter((x) => x !== 'carry-over')),
+    f.claimed ? dim(`@${f.claimed.by}`) : '',
+  ].filter(Boolean);
+  return ' ' + bits.join('  ');
+}
+
+function cmdBrief(): void {
+  const t = buildTree();
+  const { events } = load();
+  const b = brief(t, events, store.REPORTS);
+  ok({ ...b }, () => {
+    if (b.empty) {
+      console.log(`${color(GREEN, '✓')} ${today} ${dim(t.week)}  一切正常，没什么要提的。`);
+      return;
+    }
+    console.log(`${bold(today)} ${dim(t.week)}`);
+    const section = (title: string, c: number, rows: TaskFacts[]) => {
+      if (!rows.length) return;
+      console.log(color(c, ` ${title} (${rows.length})`));
+      for (const f of rows) console.log(taskLine(f));
+    };
+    section('已逾期', RED, b.overdue);
+    section('将到期', AMBER, b.dueSoon);
+    section('阻塞', RED, b.blocked);
+    section('停滞', GRAY, b.stale);
+    section('待验收超时', AMBER, b.reviewStale);
+    section('已领取', GRAY, b.claimed);
+    if (b.behind.length) {
+      console.log(color(AMBER, ` 上层落后 (${b.behind.length})`));
+      for (const u of b.behind) {
+        const h = HEALTH[u.health];
+        console.log(`  ${color(h.c, h.sym)} ${bold(u.id)}  ${u.name}  ${dim(`${h.label} · 进度 ${pct(u.progress)} / 时间 ${pct(u.elapsed)}${u.daysQuiet !== null ? ` · ${u.daysQuiet} 天没动静` : ''}`)}`);
+      }
+    }
+    if (b.proposals.length) {
+      console.log(color(AMBER, ` 待处理的周计划提案 (${b.proposals.length})`));
+      for (const p of b.proposals) console.log(`  ${p.file}  ${dim('okr apply --from ' + p.file + ' --confirmed，或 --dismiss')}`);
+    }
+  });
+}
+
+function cmdWeek(): void {
+  const t = buildTree();
+  const { events } = load();
+  const w = weekView(t, events, store.REPORTS, weekFlag(t));
+  ok({ ...w, today }, () => {
+    const prop = w.proposal === 'none' ? '' : `  提案 ${w.proposal}${w.proposals.length > 1 ? ` (${w.proposals.length})` : ''}`;
+    console.log(`${bold(w.week)} ${dim(`${w.start.slice(5)} → ${w.end.slice(5)}`)}${w.current ? dim('  本周') : ''}${color(w.proposal === 'pending' ? AMBER : GRAY, prop)}`);
+    if (!w.planned.length) console.log(dim(' 这周还没排任务。okr candidates 看候选，提案写到 reports/' + w.week + '.plan.yaml 再 okr apply。'));
+    for (const f of w.planned) console.log(taskLine(f, { order: true }));
+    if (w.carryOver.length) {
+      console.log(color(AMBER, ` 遗留 (${w.carryOver.length})`) + dim('  上周及更早排的，未完成；apply 时必须进 plan 或 drop'));
+      for (const f of w.carryOver) console.log(taskLine(f) + dim(`  ${f.week}`));
+    }
+  });
+}
+
+function cmdCandidates(): void {
+  const t = buildTree();
+  const rows = candidates(t, { dispatchable: flag('dispatchable') });
+  ok({ today, week: t.week, candidates: rows }, () => {
+    if (!rows.length) {
+      console.log(dim(flag('dispatchable') ? '没有可派工的任务（spec 齐全、依赖已完成）。' : '没有未完成的任务。'));
+      return;
+    }
+    console.log(dim(` ${rows.length} 个候选 · 按优先级 → 截止 排序，怎么选看 protocol §6`));
+    for (const c of rows) {
+      const tags = [
+        c.planned ? dim(c.week!) : '',
+        c.carryOver ? color(AMBER, '遗留') : '',
+        c.upper ? dim(`${c.upper.id}${c.upper.gap !== null ? ` ${c.upper.gap >= 0 ? '+' : ''}${Math.round(c.upper.gap * 100)}%` : ''}`) : '',
+        c.depsOpen ? color(AMBER, `等 ${c.deps.filter((d) => !d.done).map((d) => d.id).join(',')}`) : '',
+        c.dependents.length ? dim(`→ ${c.dependents.join(',')}`) : '',
+        c.dispatchable ? color(GREEN, '可派') : c.specMissing.length ? dim(`缺 ${c.specMissing.join('/')}`) : '',
+      ].filter(Boolean);
+      console.log(taskLine(c) + '  ' + tags.join('  '));
+    }
+  });
+}
+
+function sinceOrFail(events: Event[], dflt: string): { spec: string; since: string | null; anchor: Event | null } {
+  const spec = str('since') ?? dflt;
+  const r = resolveSince(events, spec);
+  if (!r) fail(`--since 接受 last-daily / last-weekly / 日期 / ISO 时间，得到 "${spec}"`);
+  return r;
+}
+
+function cmdChanges(): void {
+  const t = buildTree();
+  const { events } = load();
+  const s = sinceOrFail(events, 'last-daily');
+  const rows = changes(events, s.since);
+  ok({ since: s.since, spec: s.spec, anchor: s.anchor, events: rows, today }, () => {
+    console.log(dim(s.since ? ` 自 ${s.since}${s.anchor ? `（上次 ${s.anchor.kind === 'daily' ? '日报' : '周报'}）` : ''} 起 ${rows.length} 条` : ` 没有${s.spec === 'last-daily' ? '日报' : '周报'}锚点，列出全部 ${rows.length} 条`));
+    if (rows.length) console.log(renderEvents(t, { width: cols, events: rows }).join('\n'));
+  });
+}
+
+function cmdCommits(): void {
+  requireData();
+  const { events } = load();
+  const s = sinceOrFail(events, 'last-weekly');
+  const limit = num('limit') ?? 200;
+  if (limit < 1) fail('--limit 至少为 1');
+  const node = str('node');
+  let repos = store.loadRepos();
+  if (node) repos = repos.filter((r) => r.node === node);
+  const rows = repoCommits(repos, s.since, limit);
+  ok({ since: s.since, spec: s.spec, limit, repos: rows, today }, () => {
+    if (!rows.length) {
+      console.log(dim(node ? `没有登记到 ${node} 的仓库。` : '没有登记仓库。okr repo add <path> --node <id>'));
+      return;
+    }
+    console.log(dim(s.since ? ` 自 ${s.since}${s.anchor ? '（上次周报）' : ''} 起` : ' 没有周报锚点，取最近的提交'));
+    for (const r of rows) {
+      console.log(`${bold(r.path)}${r.node ? dim(`  → ${r.node}`) : ''}${r.error ? color(RED, `  ✗ ${r.error}`) : dim(`  ${r.commits.length} 个提交`)}`);
+      for (const c of r.commits) console.log(`  ${dim(c.date.slice(0, 10))} ${color(GRAY, c.hash)} ${c.subject}${dim(` — ${c.author}`)}`);
+    }
+  });
+}
+
+/** `--from` is taken as given, then looked up under reports/; the basename is what plan events record. */
+function planPath(): string {
+  const from = str('from');
+  if (!from) fail('用法: okr apply --from <plan.yaml> --confirmed | okr apply --dismiss [--from <plan.yaml>]');
+  const direct = resolve(from);
+  if (existsSync(direct)) return direct;
+  const inReports = resolve(store.REPORTS, from);
+  if (existsSync(inReports)) return inReports;
+  fail(`找不到 ${from}（也不在 ${store.REPORTS}）`);
+}
+
+function cmdApply(): void {
+  if (flag('dismiss')) return cmdDismiss();
+  const path = planPath();
+  let parsed: unknown;
+  try {
+    parsed = YAML.parse(readFileSync(path, 'utf8'));
+  } catch (err) {
+    fail(`${path} 不是合法 YAML: ${(err as Error).message.split('\n')[0]}`);
+  }
+  if (!confirmed) fail('apply 会改结构，要 --confirmed（skill 在用户看过提案点头后传）', 3);
+  const file = basename(path);
+  write((nodes, events) => {
+    const t = project(nodes, events, today);
+    let r;
+    try {
+      r = applyPlan(nodes, events, t, parsed as Parameters<typeof applyPlan>[3]);
+    } catch (err) {
+      if (err instanceof PlanError) fail(err.message, err.code, err.extra);
+      throw err;
+    }
+    const v = guardValidate(nodes, r.nodes, events);
+    const warnings = [...r.warnings, ...v.warnings.filter((w) => r.created.some((c) => w.startsWith(`节点 ${c.id} `)) || r.planned.some((p) => w.startsWith(`节点 ${p.id} `)))];
+    if (resolve(dirname(path)) !== resolve(store.REPORTS)) warnings.push(`${file} 不在 ${store.REPORTS} 下，week --json 的 proposal 不会追踪它`);
+    store.saveNodes(r.nodes);
+    const written: Event[] = [];
+    for (const c of r.created) written.push(mkEvent(c.id, 'change', `add ${describe(c)}`));
+    for (const n of r.notes) written.push(mkEvent(n.id, 'change', n.note));
+    const summary = `apply ${file}: ${r.week} 新建 ${r.created.length}，计划 ${r.planned.length}，退出 ${r.dropped.length}${r.kept.length ? `，保留 ${r.kept.length}` : ''}`;
+    written.push(mkEvent(null, 'plan', summary, { source: file, week: r.week }));
+    for (const e of written) store.appendEvent(e);
+    const after = project(r.nodes, [...events, ...written], today);
+    const w = weekView(after, [...events, ...written], store.REPORTS, r.week);
+    return {
+      data: { week: r.week, file, created: r.created, planned: r.planned, kept: r.kept, dropped: r.dropped, warnings, events: written, plan: w.planned },
+      msg: summary,
+      human: () => {
+        console.log(`${color(GREEN, '✓')} ${summary}`);
+        for (const f of w.planned) console.log(taskLine(f, { order: true }));
+        for (const d of r.dropped) console.log(dim(`  退出 ${d.id}（原 ${d.before}）`));
+        for (const x of warnings) console.log(color(AMBER, '  ! ') + x);
+      },
+    };
+  });
+}
+
+function cmdDismiss(): void {
+  const from = str('from');
+  write((nodes, events) => {
+    const t = project(nodes, events, today);
+    let files = proposalFiles(store.REPORTS, from ? (/^(\d{4}-W\d{2})\./.exec(basename(from))?.[1] ?? t.week) : weekFlag(t), events);
+    if (from) files = files.filter((f) => f.file === basename(from));
+    if (from && !files.length) fail(`${basename(from)} 不在 ${store.REPORTS} 下，或不符合 <周>.plan[-N].yaml 命名`);
+    const pending = files.filter((f) => f.status === 'pending');
+    if (!pending.length) fail(from ? `${basename(from)} 已经处理过（${files[0].status}）` : `${t.week} 没有待处理的提案`, 3, { files });
+    const written = pending.map((f) => mkEvent(null, 'plan', `dismiss ${f.file}`, { source: f.file, week: f.week, dismissed: true }));
+    for (const e of written) store.appendEvent(e);
+    return {
+      data: { dismissed: pending.map((f) => f.file), events: written },
+      msg: `dismiss ${pending.map((f) => f.file).join(' ')}`,
+      human: () => console.log(`${color(GREEN, '✓')} 已放弃提案 ${pending.map((f) => f.file).join('、')}`),
+    };
+  });
+}
+
+function cmdReport(): void {
+  const sub = args._[1];
+  if (sub === 'write') fail('report write 在下一步实现；先用 okr report data --json 取数据，报告由 skill 写到 reports/。');
+  if (sub !== 'data') fail('用法: okr report data [--week 2026-W36]');
+  const t = buildTree();
+  const { events } = load();
+  const r = reportData(t, events, store.REPORTS, weekFlag(t));
+  ok({ ...r }, () => {
+    console.log(`${bold(r.week)} ${dim(`${r.start} → ${r.end}`)}${r.current ? dim('  本周') : ''}`);
+    const moved = r.nodes.filter((n) => n.kind !== 'task' && n.kind !== 'habit');
+    if (moved.length) {
+      console.log(dim(' 目标 / KR / 里程碑'));
+      for (const n of moved) {
+        const h = HEALTH[n.health];
+        const delta = n.delta === null ? '' : n.delta === 0 ? dim('  —') : color(n.delta > 0 ? GREEN : RED, `  ${n.delta > 0 ? '+' : ''}${Math.round(n.delta * 100)}%`);
+        console.log(`  ${'  '.repeat(n.depth)}${color(h.c, h.sym)} ${bold(n.id)} ${n.name}  ${dim(pct(n.progress))}${delta}${n.current !== null ? dim(`  ${n.current}${n.unit ?? ''}`) : ''}`);
+      }
+    }
+    console.log(dim(` 完成 ${r.done.length} 个任务`) + (r.done.length ? '  ' + r.done.map((d) => `${d.id}${d.hours !== null ? `(${d.hours}h)` : ''}`).join(' ') : ''));
+    const ev = Object.entries(r.events).map(([k, v]) => `${k} ${v}`).join(' · ');
+    if (ev) console.log(dim(` 事件  ${ev}`));
+    console.log(dim(` 周计划 ${r.plan.planned.length} 个，遗留 ${r.plan.carryOver.length} 个，提案 ${r.plan.proposal}`));
+    if (!r.brief.empty) console.log(dim(` 待关注  逾期 ${r.brief.overdue.length} · 将到期 ${r.brief.dueSoon.length} · 阻塞 ${r.brief.blocked.length} · 停滞 ${r.brief.stale.length} · 上层落后 ${r.brief.behind.length}`));
+    console.log(dim(' 完整数据 okr report data --json'));
   });
 }
 
@@ -877,7 +1121,8 @@ function cmdHelp(): void {
       '',
       `${bold('结构')}   init · add · edit · move · rm · tree [--all] · show <id> [--spec] · validate [--merge-events] · migrate · repo add|rm|list`,
       `${bold('记录')}   log · done · block · claim · submit --link · reject · assess --value --reason · check · recent [--node] [--days]`,
-      `${bold('数据')}   velocity [--weeks]`,
+      `${bold('数据')}   brief · week [--week W] · candidates [--dispatchable] · changes [--since last-daily|last-weekly|<ts>] · commits [--since] [--limit] · velocity [--weeks] · report data [--week W]`,
+      `${bold('计划')}   apply --from <plan.yaml> --confirmed（见 protocol §6）· apply --dismiss [--from <plan.yaml>]`,
       `${bold('视图')}   tui · status · tree · show`,
       `${bold('协议')}   protocol（打印 PROTOCOL.md，agent 先读它再写）`,
       `${bold('skill')}  skill install [--force] · remove · status · link（装进 ~/.agents/skills 与 ~/.claude/skills；运行时自动补装/更新自己装的那份，OKR_SKIP_SKILL=1 关掉；link 把 okr 软链到 ~/.local/bin）`,
@@ -930,6 +1175,13 @@ switch (cmd) {
   case 'assess': cmdAssess(); break;
   case 'recent': cmdRecent(); break;
   case 'velocity': cmdVelocity(); break;
+  case 'brief': cmdBrief(); break;
+  case 'week': cmdWeek(); break;
+  case 'candidates': cmdCandidates(); break;
+  case 'changes': cmdChanges(); break;
+  case 'commits': cmdCommits(); break;
+  case 'apply': cmdApply(); break;
+  case 'report': cmdReport(); break;
   case 'status': cmdStatus(); break;
   case 'tree': cmdTree(); break;
   case 'show': cmdShow(); break;

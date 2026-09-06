@@ -24,7 +24,7 @@
     {
       "id": 5,
       "prompt": "把 m1 拆一下，这周先做接口那块",
-      "expected_output": "先展示提案（任务名、优先级、截止、所属、一句为什么），不写入。用户确认后落成 reports/<周>.plan-N.yaml 并 okr apply --from … --confirmed；apply 未实现时逐条 okr add --parent m1 --kind task … --week <本周> --confirmed。当天步骤只在对话里说。"
+      "expected_output": "先展示提案（任务名、优先级、截止、所属、一句为什么），不写入。用户确认后落成 reports/<周>.plan-N.yaml 并 okr apply --from … --confirmed；apply 前先 okr week --json 确认遗留任务都进了 plan 或 drop。当天步骤只在对话里说。"
     },
     {
       "id": 6,

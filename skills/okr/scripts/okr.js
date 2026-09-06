@@ -7366,8 +7366,9 @@ var require_dist = __commonJS({
 });
 
 // src/cli.ts
-import { existsSync as existsSync5, statSync as statSync2 } from "node:fs";
-import { dirname as dirname2, resolve as resolve2 } from "node:path";
+var import_yaml3 = __toESM(require_dist(), 1);
+import { existsSync as existsSync6, readFileSync as readFileSync5, statSync as statSync2 } from "node:fs";
+import { basename as basename3, dirname as dirname2, resolve as resolve2 } from "node:path";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 
 // src/ansi.ts
@@ -8404,11 +8405,366 @@ function migrate() {
   return { nodes, events: sorted, warnings };
 }
 
+// src/plan.ts
+import { execFileSync as execFileSync2 } from "node:child_process";
+import { existsSync as existsSync4, readdirSync as readdirSync2 } from "node:fs";
+import { basename as basename2, join as join3 } from "node:path";
+var PLAN_FILE = /^(\d{4}-W\d{2})\.plan(?:-\d+)?\.yaml$/;
+function proposalFiles(reportsDir, week, events) {
+  if (!existsSync4(reportsDir)) return [];
+  const plans = sortEvents(events.filter((e) => e.type === "plan" && e.source));
+  return readdirSync2(reportsDir).filter((f) => PLAN_FILE.test(f) && f.startsWith(week + ".")).sort().map((file) => {
+    const last = [...plans].reverse().find((e) => e.source === file);
+    return { file, path: join3(reportsDir, file), week, status: !last ? "pending" : last.dismissed ? "dismissed" : "applied", ts: last?.ts ?? null, by: last?.by };
+  });
+}
+function proposalStatus(files) {
+  if (!files.length) return "none";
+  if (files.some((f) => f.status === "pending")) return "pending";
+  if (files.some((f) => f.status === "applied")) return "applied";
+  return "dismissed";
+}
+function taskFacts(s, today2) {
+  const n = s.node;
+  const path = [];
+  for (let p = s.parent; p; p = p.parent) path.unshift(p.node.id);
+  return {
+    id: n.id,
+    name: n.name,
+    path,
+    parent: n.parent ?? null,
+    stage: s.stage,
+    priority: n.priority ?? null,
+    deadline: n.deadline ?? null,
+    daysLeft: n.deadline ? daysBetween(today2, n.deadline) : null,
+    week: n.week ?? null,
+    order: typeof n.order === "number" ? n.order : null,
+    flags: s.flags,
+    daysSinceLast: s.daysSinceLast,
+    blocked: s.blocked,
+    claimed: s.claimed,
+    planned: s.planned,
+    carryOver: s.carryOver,
+    dispatchable: s.dispatchable
+  };
+}
+var activeTasks = (t) => t.all.filter((s) => s.node.kind === "task" && s.effective === "active");
+function byOrder(a, b) {
+  const ao = typeof a.node.order === "number" ? a.node.order : Number.POSITIVE_INFINITY;
+  const bo = typeof b.node.order === "number" ? b.node.order : Number.POSITIVE_INFINITY;
+  return ao - bo || a.node.id.localeCompare(b.node.id);
+}
+function weekView(t, events, reportsDir, label = t.week) {
+  const start = weekMonday(label);
+  const planned = activeTasks(t).filter((s) => s.node.week === label).sort(byOrder).map((s) => taskFacts(s, t.today));
+  const carryOver = activeTasks(t).filter((s) => s.stage !== "done" && !!s.node.week && s.node.week < label).sort(byOrder).map((s) => taskFacts(s, t.today));
+  const proposals = proposalFiles(reportsDir, label, events);
+  return { week: label, start, end: addDays(start, 6), current: label === t.week, planned, carryOver, proposal: proposalStatus(proposals), proposals };
+}
+function brief(t, events, reportsDir) {
+  const tasks = activeTasks(t).filter((s) => s.stage !== "done");
+  const withFlag = (f) => tasks.filter((s) => s.flags.includes(f)).map((s) => taskFacts(s, t.today));
+  const behind = t.all.filter((s) => s.node.kind !== "task" && s.node.kind !== "habit" && s.effective === "active" && (s.health === "at-risk" || s.health === "behind" || s.health === "idle")).map((s) => ({
+    id: s.node.id,
+    name: s.node.name,
+    kind: s.node.kind,
+    health: s.health,
+    progress: s.progress,
+    elapsed: s.elapsed,
+    daysQuiet: s.lastInTree ? daysBetween(s.lastInTree.ts, t.today) : null
+  }));
+  const b = {
+    today: t.today,
+    week: t.week,
+    overdue: withFlag("overdue"),
+    dueSoon: withFlag("due-soon"),
+    blocked: withFlag("blocked"),
+    stale: withFlag("stale"),
+    reviewStale: withFlag("review-stale"),
+    claimed: withFlag("claimed"),
+    behind,
+    proposals: proposalFiles(reportsDir, t.week, events).filter((f) => f.status === "pending"),
+    empty: false
+  };
+  b.empty = !b.overdue.length && !b.dueSoon.length && !b.blocked.length && !b.stale.length && !b.reviewStale.length && !b.claimed.length && !b.behind.length && !b.proposals.length;
+  return b;
+}
+function specMissing(n) {
+  const sp = n.spec ?? {};
+  const m = [];
+  if (!sp.goal) m.push("goal");
+  if (!sp.accept?.length) m.push("accept");
+  if (!sp.verify) m.push("verify");
+  if (!sp.links?.length) m.push("links");
+  return m;
+}
+function candidates(t, opts = {}) {
+  const dependents = /* @__PURE__ */ new Map();
+  for (const s of t.all) for (const d of s.node.deps ?? []) dependents.set(d, [...dependents.get(d) ?? [], s.node.id]);
+  const prio = (p) => p ? Number(p.slice(1)) : 9;
+  return activeTasks(t).filter((s) => s.stage !== "done" && (!opts.dispatchable || s.dispatchable)).map((s) => {
+    let up = s.parent;
+    while (up && (up.node.kind === "task" || up.node.kind === "habit")) up = up.parent;
+    const deps = (s.node.deps ?? []).map((d) => {
+      const dep = t.byId.get(d);
+      return { id: d, name: dep?.node.name ?? "?", done: !!dep && (dep.stage === "done" || dep.effective === "canceled") };
+    });
+    return {
+      ...taskFacts(s, t.today),
+      weight: s.node.weight ?? 1,
+      upper: up ? { id: up.node.id, name: up.node.name, health: up.health, progress: up.progress, elapsed: up.elapsed, gap: up.progress !== null && up.elapsed !== null ? Math.round((up.progress - up.elapsed) * 100) / 100 : null } : null,
+      deps,
+      depsOpen: deps.filter((d) => !d.done).length,
+      dependents: dependents.get(s.node.id) ?? [],
+      specMissing: specMissing(s.node)
+    };
+  }).sort((a, b) => prio(a.priority) - prio(b.priority) || (a.deadline ?? "9999").localeCompare(b.deadline ?? "9999") || a.id.localeCompare(b.id));
+}
+function resolveSince(events, spec) {
+  if (spec === "last-daily" || spec === "last-weekly") {
+    const kind = spec === "last-daily" ? "daily" : "weekly";
+    const anchor = [...sortEvents(events)].reverse().find((e) => e.type === "report" && e.kind === kind) ?? null;
+    return { spec, since: anchor ? anchor.rec ?? anchor.ts : null, anchor };
+  }
+  if (isValidDate(spec)) {
+    const [y, m, d] = spec.split("-").map(Number);
+    return { spec, since: nowIso(new Date(y, m - 1, d, 0, 0, 0)), anchor: null };
+  }
+  const ts = parseTs(spec);
+  return ts ? { spec, since: ts, anchor: null } : null;
+}
+function changes(events, since) {
+  const cut = since ? tsMs(since) : Number.NEGATIVE_INFINITY;
+  return sortEvents(events.filter((e) => e.type !== "report" && e.type !== "plan" && tsMs(e.rec ?? e.ts) > cut)).reverse();
+}
+function repoCommits(repos, since, limit = 200, run = gitLog) {
+  return repos.map((r) => {
+    const base = { path: r.path, node: r.node ?? null, commits: [] };
+    if (!existsSync4(r.path)) return { ...base, error: "\u76EE\u5F55\u4E0D\u5B58\u5728" };
+    if (!existsSync4(join3(r.path, ".git"))) return { ...base, error: "\u4E0D\u662F git \u4ED3\u5E93" };
+    try {
+      const out = run(r.path, since, limit);
+      base.commits = out.split("\n").filter(Boolean).map((l) => {
+        const [hash, author, date, subject] = l.split("");
+        return { hash, author, date, subject };
+      });
+      return base;
+    } catch (err) {
+      return { ...base, error: String(err.message).split("\n")[0] };
+    }
+  });
+}
+function gitLog(path, since, limit) {
+  const args2 = ["-C", path, "log", "--no-merges", `--max-count=${limit}`, "--format=%h%an%aI%s"];
+  if (since) args2.push(`--since=${since}`);
+  return execFileSync2("git", args2, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+}
+var PlanError = class extends Error {
+  code;
+  extra;
+  constructor(msg, code = 1, extra = {}) {
+    super(msg);
+    this.code = code;
+    this.extra = extra;
+  }
+};
+var KINDS2 = ["objective", "metric", "milestone", "task", "habit"];
+var PRIORITIES2 = ["P0", "P1", "P2", "P3"];
+var NEW_REF = /^new:(\d+)$/;
+function applyPlan(nodes, events, t, file) {
+  if (typeof file !== "object" || file === null || Array.isArray(file)) throw new PlanError("plan.yaml \u9876\u5C42\u8981\u662F\u4E00\u4E2A\u6620\u5C04");
+  const week = file.week ?? t.week;
+  if (!isValidWeek(week)) throw new PlanError(`week \u683C\u5F0F\uFF1A2026-W36\uFF0C\u5F97\u5230 "${week}"`);
+  const warnings = [];
+  if (week < t.week) warnings.push(`\u8BA1\u5212\u7684\u5468 ${week} \u65E9\u4E8E\u672C\u5468 ${t.week}`);
+  for (const k of Object.keys(file)) if (!["week", "new", "plan", "drop"].includes(k)) throw new PlanError(`plan.yaml \u4E0D\u8BA4\u8BC6\u7684\u5B57\u6BB5: ${k}`);
+  const newList = file.new ?? [];
+  const planList = file.plan ?? [];
+  const dropList = file.drop ?? [];
+  if (!Array.isArray(newList) || !Array.isArray(planList) || !Array.isArray(dropList)) throw new PlanError("new / plan / drop \u90FD\u8981\u662F\u5217\u8868");
+  if (!newList.length && !planList.length && !dropList.length) throw new PlanError("plan.yaml \u91CC\u6CA1\u6709 new / plan / drop\uFF0C\u6CA1\u4E8B\u53EF\u505A");
+  const all = nodes.map((n) => ({ ...n }));
+  const byId = new Map(all.map((n) => [n.id, n]));
+  const notes = [];
+  const created = [];
+  const newIds = [];
+  newList.forEach((item, i) => {
+    if (typeof item !== "object" || item === null) throw new PlanError(`new[${i}] \u8981\u662F\u4E00\u4E2A\u6620\u5C04`);
+    if (!item.name || typeof item.name !== "string") throw new PlanError(`new[${i}] \u7F3A name`);
+    const kind = item.kind ?? "task";
+    if (!KINDS2.includes(kind)) throw new PlanError(`new[${i}] kind \u975E\u6CD5: ${kind}`);
+    if (item.id !== void 0) {
+      if (!/^[A-Za-z0-9][\w.-]*$/.test(item.id)) throw new PlanError(`new[${i}] id \u53EA\u80FD\u7528\u5B57\u6BCD\u6570\u5B57 . _ -\uFF1A${item.id}`);
+      if (byId.has(item.id) || newIds.includes(item.id)) throw new PlanError(`new[${i}] \u8282\u70B9 ${item.id} \u5DF2\u5B58\u5728`);
+      if (takenIds(all, events).has(item.id)) throw new PlanError(`new[${i}] ${item.id} \u5728\u4E8B\u4EF6\u5386\u53F2\u6216 deps \u91CC\u51FA\u73B0\u8FC7\uFF0Cid \u4E0D\u80FD\u590D\u7528`);
+    }
+    newIds.push(item.id ?? "");
+  });
+  const ref = (x, where) => {
+    if (typeof x !== "string") throw new PlanError(`${where} \u8981\u662F\u8282\u70B9 id \u6216 new:N\uFF0C\u5F97\u5230 ${JSON.stringify(x)}`);
+    const m = NEW_REF.exec(x);
+    if (!m) return x;
+    const i = Number(m[1]);
+    if (i >= newList.length) throw new PlanError(`${where} \u5F15\u7528 ${x}\uFF0C\u4F46 new \u53EA\u6709 ${newList.length} \u9879\uFF08\u4E0B\u6807\u4ECE 0 \u8D77\uFF09`);
+    return newIds[i];
+  };
+  newList.forEach((item, i) => {
+    const kind = item.kind ?? "task";
+    const parentRef = item.parent ?? null;
+    let parent = null;
+    if (parentRef) {
+      const m = NEW_REF.exec(parentRef);
+      if (m && Number(m[1]) >= i) throw new PlanError(`new[${i}] \u7684 parent ${parentRef} \u5FC5\u987B\u662F\u6392\u5728\u5B83\u524D\u9762\u7684 new \u9879`);
+      parent = m ? newIds[Number(m[1])] : parentRef;
+      if (!byId.has(parent)) throw new PlanError(`new[${i}] parent \u4E0D\u5B58\u5728: ${parent}`);
+    }
+    const id = item.id || newId(all, kind, parent, events);
+    newIds[i] = id;
+    const node = { id, name: item.name, kind };
+    if (parent) node.parent = parent;
+    const copy = (k) => {
+      const v = item[k];
+      if (v !== void 0 && v !== null) node[k] = v;
+    };
+    for (const k of ["area", "status", "start", "end", "weight", "unit", "from", "to", "cadence", "priority", "deadline", "order"]) copy(k);
+    if (item.spec && typeof item.spec === "object") node.spec = item.spec;
+    if (item.deps) node.deps = item.deps.map((d, j) => ref(d, `new[${i}].deps[${j}]`));
+    if (node.priority && !PRIORITIES2.includes(node.priority)) throw new PlanError(`new[${i}] priority \u53EA\u80FD\u662F P0\u2013P3`);
+    if (node.deadline && !isValidDate(node.deadline)) throw new PlanError(`new[${i}] deadline \u9700\u8981 YYYY-MM-DD`);
+    if (kind === "metric" && (typeof node.from !== "number" || typeof node.to !== "number")) throw new PlanError(`new[${i}] metric \u9700\u8981 unit / from / to`);
+    if (kind === "habit" && !node.cadence) node.cadence = "1/week";
+    if (kind !== "task" && kind !== "habit" && !node.start) node.start = t.today;
+    if (kind !== "task") {
+      for (const k of ["priority", "deadline", "deps", "week", "order", "spec"]) if (k in node) throw new PlanError(`new[${i}] ${k} \u53EA\u5BF9 task \u6709\u610F\u4E49`);
+    }
+    all.push(node);
+    byId.set(id, node);
+    created.push(node);
+  });
+  for (const n of created) for (const d of n.deps ?? []) if (!byId.has(d)) throw new PlanError(`${n.id} \u7684\u4F9D\u8D56\u4E0D\u5B58\u5728: ${d}`);
+  const planIds = planList.map((x, i) => ref(x, `plan[${i}]`));
+  const dropIds = dropList.map((x, i) => ref(x, `drop[${i}]`));
+  const dupe = planIds.find((x, i) => planIds.indexOf(x) !== i);
+  if (dupe) throw new PlanError(`plan \u91CC ${dupe} \u51FA\u73B0\u4E86\u4E24\u6B21`);
+  const both = planIds.filter((x) => dropIds.includes(x));
+  if (both.length) throw new PlanError(`${both.join(", ")} \u540C\u65F6\u5728 plan \u548C drop \u91CC`);
+  const stateOf = (id) => t.byId.get(id);
+  for (const id of planIds) {
+    const n = byId.get(id);
+    if (!n) throw new PlanError(`plan \u91CC\u7684\u8282\u70B9\u4E0D\u5B58\u5728: ${id}`, 1, { candidates: [] });
+    if (n.kind !== "task") throw new PlanError(`${id} \u662F${n.kind}\uFF0C\u53EA\u6709 task \u80FD\u6392\u8FDB\u5468\u8BA1\u5212`, 3);
+    const s = stateOf(id);
+    if (s && s.stage === "done") throw new PlanError(`${id} \u5DF2\u5B8C\u6210\uFF0C\u4E0D\u80FD\u6392\u8FDB ${week}`, 3);
+    if (s && s.effective !== "active") throw new PlanError(`${id} \u5DF2${s.effective === "canceled" ? "\u53D6\u6D88" : "\u51BB\u7ED3"}\uFF08\u81EA\u8EAB\u6216\u7956\u5148\uFF09\uFF0C\u4E0D\u80FD\u6392\u8FDB ${week}`, 3);
+    if (!s && created.some((c) => c.id === id) && (n.status ?? "active") !== "active") throw new PlanError(`${id} \u72B6\u6001\u4E0D\u662F active\uFF0C\u4E0D\u80FD\u6392\u8FDB ${week}`, 3);
+  }
+  for (const id of dropIds) {
+    const n = byId.get(id);
+    if (!n) throw new PlanError(`drop \u91CC\u7684\u8282\u70B9\u4E0D\u5B58\u5728: ${id}`, 1, { candidates: [] });
+    if (n.kind !== "task") throw new PlanError(`drop \u91CC\u7684 ${id} \u4E0D\u662F task`, 3);
+  }
+  const undecided = all.filter((n) => n.kind === "task" && !!n.week && n.week < week && !planIds.includes(n.id) && !dropIds.includes(n.id)).filter((n) => {
+    const s = stateOf(n.id);
+    return !s || s.stage !== "done" && s.effective === "active";
+  }).map((n) => n.id);
+  if (undecided.length) throw new PlanError(`\u9057\u7559\u4EFB\u52A1\u8981\u4E48\u8FDB plan \u8981\u4E48\u8FDB drop\uFF0C\u672A\u51B3\u5B9A: ${undecided.join(", ")}`, 3, { carryOver: undecided });
+  const kept = all.filter((n) => n.kind === "task" && n.week === week && !planIds.includes(n.id) && !dropIds.includes(n.id)).map((n) => n.id);
+  let base = 0;
+  for (const id of kept) {
+    const o = byId.get(id).order;
+    if (typeof o === "number" && o > base) base = o;
+  }
+  const planned = [];
+  planIds.forEach((id, i) => {
+    const n = byId.get(id);
+    const before = { week: n.week ?? null, order: typeof n.order === "number" ? n.order : null };
+    const order = base + i + 1;
+    n.week = week;
+    n.order = order;
+    planned.push({ id, order, before });
+    if (!created.some((c) => c.id === id)) {
+      const diff = [before.week !== week ? `week: ${before.week ?? "none"} \u2192 ${week}` : "", before.order !== order ? `order: ${before.order ?? "none"} \u2192 ${order}` : ""].filter(Boolean).join("; ");
+      if (diff) notes.push({ id, note: `edit ${id}: ${diff}` });
+    }
+    if (!specComplete(n)) warnings.push(`${id} spec \u7F3A ${specMissing(n).join("\u3001")}\uFF0C\u4E0D\u53EF\u6D3E\u5DE5`);
+  });
+  const dropped = [];
+  for (const id of dropIds) {
+    const n = byId.get(id);
+    if (!n.week) {
+      warnings.push(`${id} \u672C\u6765\u5C31\u4E0D\u5728\u4EFB\u4F55\u4E00\u5468\u91CC\uFF0Cdrop \u6CA1\u6709\u6548\u679C`);
+      continue;
+    }
+    dropped.push({ id, before: n.week });
+    notes.push({ id, note: `edit ${id}: week: ${n.week} \u2192 none${typeof n.order === "number" ? `; order: ${n.order} \u2192 none` : ""}` });
+    delete n.week;
+    delete n.order;
+  }
+  return { week, nodes: all, created, planned, kept, dropped, warnings, notes };
+}
+function reportData(t, events, reportsDir, label = t.week) {
+  const start = weekMonday(label);
+  const end = addDays(start, 6);
+  const before = addDays(start, -1);
+  const inWeek = (ts) => dayOf(ts) >= start && dayOf(ts) <= end;
+  const nodes = t.all.filter((s) => s.effective === "active").map((s) => {
+    const prev = progressAt(s, before);
+    return {
+      id: s.node.id,
+      name: s.node.name,
+      kind: s.node.kind,
+      depth: s.depth,
+      parent: s.node.parent ?? null,
+      health: s.health,
+      stage: s.stage,
+      progress: s.progress,
+      before: prev,
+      delta: s.progress !== null && prev !== null ? Math.round((s.progress - prev) * 100) / 100 : null,
+      current: s.current,
+      unit: s.node.unit ?? null,
+      assess: s.assess,
+      events: s.events.filter((e) => inWeek(e.ts)).length
+    };
+  });
+  const done = t.all.filter((s) => s.node.kind === "task" && s.stage === "done").flatMap((s) => {
+    const d = [...s.events].reverse().find((e) => e.type === "done");
+    if (!d || !inWeek(d.ts)) return [];
+    const hours = s.events.reduce((acc, e) => typeof e.hours === "number" ? (acc ?? 0) + e.hours : acc, null);
+    return [{ id: s.node.id, name: s.node.name, parent: s.node.parent ?? null, ts: d.ts, hours }];
+  });
+  const counts = {};
+  for (const e of events) if (inWeek(e.ts)) counts[e.type] = (counts[e.type] ?? 0) + 1;
+  const habits = t.all.filter((s) => s.node.kind === "habit" && s.effective === "active" && s.habit).map((s) => ({
+    id: s.node.id,
+    name: s.node.name,
+    cadence: s.node.cadence ?? "1/week",
+    thisPeriod: s.habit.thisPeriod,
+    times: s.habit.times,
+    streak: s.habit.streak,
+    checksInWeek: [...s.habit.days].filter((d) => d >= start && d <= end).length
+  }));
+  return {
+    week: label,
+    start,
+    end,
+    today: t.today,
+    current: label === t.week,
+    nodes,
+    done,
+    events: counts,
+    velocity: velocity(t, 4),
+    plan: weekView(t, events, reportsDir, label),
+    brief: brief(t, events, reportsDir),
+    candidates: candidates(t),
+    habits
+  };
+}
+
 // src/skill.ts
 import { createHash as createHash2 } from "node:crypto";
-import { cpSync, existsSync as existsSync4, lstatSync, mkdirSync as mkdirSync2, readdirSync as readdirSync2, readFileSync as readFileSync4, readlinkSync, realpathSync, rmSync as rmSync4, symlinkSync, writeFileSync as writeFileSync2 } from "node:fs";
+import { cpSync, existsSync as existsSync5, lstatSync, mkdirSync as mkdirSync2, readdirSync as readdirSync3, readFileSync as readFileSync4, readlinkSync, realpathSync, rmSync as rmSync4, symlinkSync, writeFileSync as writeFileSync2 } from "node:fs";
 import { homedir as homedir2 } from "node:os";
-import { delimiter, dirname, join as join3, relative, resolve } from "node:path";
+import { delimiter, dirname, join as join4, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 var SKILL_NAME = "okr";
 var HERE = dirname(fileURLToPath(import.meta.url));
@@ -8417,8 +8773,8 @@ var SKILL_STAMP = ".wayne-skills";
 function skillHash(dir) {
   const files = [];
   const walk = (d) => {
-    for (const e of readdirSync2(d, { withFileTypes: true })) {
-      const full = join3(d, e.name);
+    for (const e of readdirSync3(d, { withFileTypes: true })) {
+      const full = join4(d, e.name);
       if (e.isDirectory()) walk(full);
       else if (e.name !== SKILL_STAMP) files.push(full);
     }
@@ -8429,7 +8785,7 @@ function skillHash(dir) {
   return h.digest("hex");
 }
 function skillPaths(home = homedir2()) {
-  return { agents: join3(home, ".agents", "skills", SKILL_NAME), claude: join3(home, ".claude", "skills", SKILL_NAME) };
+  return { agents: join4(home, ".agents", "skills", SKILL_NAME), claude: join4(home, ".claude", "skills", SKILL_NAME) };
 }
 var isSymlink = (p) => {
   try {
@@ -8447,7 +8803,7 @@ var samePlace = (a, b) => {
 };
 function installSkill(opts = {}) {
   const src = opts.src ?? SKILL_SRC;
-  if (!existsSync4(join3(src, "SKILL.md"))) throw new Error(`\u627E\u4E0D\u5230 skill \u6E90\u76EE\u5F55 ${src}`);
+  if (!existsSync5(join4(src, "SKILL.md"))) throw new Error(`\u627E\u4E0D\u5230 skill \u6E90\u76EE\u5F55 ${src}`);
   const p = skillPaths(opts.home);
   let agentsAction = "copied";
   if (isSymlink(p.agents) && !opts.force) {
@@ -8458,10 +8814,10 @@ function installSkill(opts = {}) {
     mkdirSync2(dirname(p.agents), { recursive: true });
     rmSync4(p.agents, { recursive: true, force: true });
     cpSync(src, p.agents, { recursive: true });
-    writeFileSync2(join3(p.agents, SKILL_STAMP), `${skillHash(src)}
+    writeFileSync2(join4(p.agents, SKILL_STAMP), `${skillHash(src)}
 `);
   }
-  const target = join3("..", "..", ".agents", "skills", SKILL_NAME);
+  const target = join4("..", "..", ".agents", "skills", SKILL_NAME);
   let claudeAction = "linked";
   if (isSymlink(p.claude)) {
     if (readlinkSync(p.claude) === target) claudeAction = "kept";
@@ -8469,7 +8825,7 @@ function installSkill(opts = {}) {
       rmSync4(p.claude);
       symlinkSync(target, p.claude);
     }
-  } else if (existsSync4(p.claude)) {
+  } else if (existsSync5(p.claude)) {
     claudeAction = "skipped-dir";
   } else {
     mkdirSync2(dirname(p.claude), { recursive: true });
@@ -8484,9 +8840,9 @@ function removeSkill(opts = {}) {
   if (isSymlink(p.claude)) {
     rmSync4(p.claude);
     removed.push(p.claude);
-  } else if (existsSync4(p.claude)) kept.push(p.claude);
+  } else if (existsSync5(p.claude)) kept.push(p.claude);
   if (isSymlink(p.agents)) kept.push(p.agents);
-  else if (existsSync4(p.agents)) {
+  else if (existsSync5(p.agents)) {
     rmSync4(p.agents, { recursive: true, force: true });
     removed.push(p.agents);
   }
@@ -8498,11 +8854,11 @@ function ensureSkill(opts = {}) {
   const src = opts.src ?? SKILL_SRC;
   const p = skillPaths(opts.home);
   try {
-    if (!existsSync4(join3(src, "SKILL.md"))) return null;
-    if (isSymlink(p.agents) || existsSync4(p.agents) && samePlace(src, p.agents)) return null;
-    if (!existsSync4(p.agents)) return { action: "installed", result: installSkill({ home: opts.home, src }) };
-    const stamp = join3(p.agents, SKILL_STAMP);
-    if (!existsSync4(stamp)) return null;
+    if (!existsSync5(join4(src, "SKILL.md"))) return null;
+    if (isSymlink(p.agents) || existsSync5(p.agents) && samePlace(src, p.agents)) return null;
+    if (!existsSync5(p.agents)) return { action: "installed", result: installSkill({ home: opts.home, src }) };
+    const stamp = join4(p.agents, SKILL_STAMP);
+    if (!existsSync5(stamp)) return null;
     if (readFileSync4(stamp, "utf8").trim() === skillHash(src)) return null;
     return { action: "updated", result: installSkill({ home: opts.home, src, force: true }) };
   } catch {
@@ -8511,12 +8867,12 @@ function ensureSkill(opts = {}) {
 }
 function linkCli(opts = {}) {
   const env = opts.env ?? process.env;
-  const dir = resolve(opts.dir ?? join3(opts.home ?? homedir2(), ".local", "bin"));
+  const dir = resolve(opts.dir ?? join4(opts.home ?? homedir2(), ".local", "bin"));
   const target = realpathSync(opts.script ?? process.argv[1]);
-  const link = join3(dir, SKILL_NAME);
+  const link = join4(dir, SKILL_NAME);
   mkdirSync2(dir, { recursive: true });
   if (isSymlink(link)) rmSync4(link);
-  else if (existsSync4(link)) throw new Error(`${link} \u5DF2\u5B58\u5728\u4E14\u4E0D\u662F\u8F6F\u94FE\uFF0C\u4E0D\u8986\u76D6`);
+  else if (existsSync5(link)) throw new Error(`${link} \u5DF2\u5B58\u5728\u4E14\u4E0D\u662F\u8F6F\u94FE\uFF0C\u4E0D\u8986\u76D6`);
   symlinkSync(target, link);
   const onPath = (env.PATH ?? "").split(delimiter).some((d) => d && samePlace(d, dir));
   return { link, target, dir, onPath };
@@ -9183,7 +9539,10 @@ var KNOWN_FLAGS = /* @__PURE__ */ new Set([
   "limit",
   "help",
   "version",
-  "dir"
+  "dir",
+  "since",
+  "dismiss",
+  "dispatchable"
 ]);
 var str = (k) => {
   const v = args.flags[k];
@@ -9410,8 +9769,8 @@ function guardStage(type, n, s, e) {
       break;
   }
 }
-var KINDS2 = ["objective", "metric", "milestone", "task", "habit"];
-var PRIORITIES2 = ["P0", "P1", "P2", "P3"];
+var KINDS3 = ["objective", "metric", "milestone", "task", "habit"];
+var PRIORITIES3 = ["P0", "P1", "P2", "P3"];
 function nodeFields(kind) {
   const patch = {};
   const present = [];
@@ -9446,7 +9805,7 @@ function nodeFields(kind) {
   take("cadence", str("cadence") ?? str("habit"));
   const priority = str("priority");
   if (priority !== void 0) {
-    if (!PRIORITIES2.includes(priority)) fail("--priority \u53EA\u80FD\u662F P0\u2013P3");
+    if (!PRIORITIES3.includes(priority)) fail("--priority \u53EA\u80FD\u662F P0\u2013P3");
     take("priority", priority);
   }
   take("deadline", clearable("deadline") ?? void 0, str("deadline") !== void 0);
@@ -9497,7 +9856,7 @@ var ADD_USAGE = "\u7528\u6CD5: okr add [id] --name \u540D\u79F0 --kind objective
 function cmdAdd() {
   write((nodes, events) => {
     const kind = str("kind") ?? (str("metric") || str("from") !== void 0 || str("to") !== void 0 ? "metric" : str("cadence") ?? str("habit") ? "habit" : void 0);
-    if (!kind || !KINDS2.includes(kind)) fail(ADD_USAGE + "\uFF08\u65E0\u6CD5\u4ECE\u5176\u5B83\u53C2\u6570\u63A8\u51FA kind \u65F6\u5FC5\u987B\u663E\u5F0F --kind\uFF09");
+    if (!kind || !KINDS3.includes(kind)) fail(ADD_USAGE + "\uFF08\u65E0\u6CD5\u4ECE\u5176\u5B83\u53C2\u6570\u63A8\u51FA kind \u65F6\u5FC5\u987B\u663E\u5F0F --kind\uFF09");
     if (!str("name")) fail(ADD_USAGE);
     if (!confirmed) fail("\u7ED3\u6784\u53D8\u66F4\u8981 --confirmed\uFF08skill \u5728\u7528\u6237\u70B9\u5934\u540E\u4F20\uFF09", 3);
     const { patch } = nodeFields(kind);
@@ -9621,9 +9980,9 @@ function cmdRepo() {
       saveRepos(repos.filter((r) => r.path !== path));
       return { data: { path }, msg: `repo rm ${path}`, human: () => console.log(`${color(GREEN, "\u2713")} \u5DF2\u79FB\u9664 ${path}`) };
     }
-    if (!existsSync5(path) || !statSync2(path).isDirectory()) fail(`\u76EE\u5F55\u4E0D\u5B58\u5728: ${path}`);
+    if (!existsSync6(path) || !statSync2(path).isDirectory()) fail(`\u76EE\u5F55\u4E0D\u5B58\u5728: ${path}`);
     const warnings = [];
-    if (!existsSync5(resolve2(path, ".git"))) warnings.push("\u76EE\u5F55\u91CC\u6CA1\u6709 .git\uFF0C\u63D0\u4EA4\u63D0\u53D6\uFF08okr commits\uFF0C\u5F85\u5B9E\u73B0\uFF09\u4F1A\u8DF3\u8FC7\u5B83");
+    if (!existsSync6(resolve2(path, ".git"))) warnings.push("\u76EE\u5F55\u91CC\u6CA1\u6709 .git\uFF0Cokr commits \u4F1A\u8DF3\u8FC7\u5B83");
     const node = str("node");
     if (node && !nodes.some((n) => n.id === node)) fail(`\u8282\u70B9\u4E0D\u5B58\u5728: ${node}`);
     const next = repos.filter((r) => r.path !== path);
@@ -9748,6 +10107,232 @@ function cmdVelocity() {
     for (const w of v) console.log(` ${w.week}   ${String(w.done).padStart(4)}  ${w.hours === null ? dim("\u2014") : `${w.hours}h`}  ${dim(w.ids.join(" "))}`);
   });
 }
+var weekFlag = (t) => {
+  const w = str("week");
+  if (w === void 0) return t.week;
+  if (!isValidWeek(w)) fail(`--week \u683C\u5F0F\uFF1A2026-W36\uFF0C\u5F97\u5230 "${w}"`);
+  return w;
+};
+function taskLine(f, opts = {}) {
+  const st = STAGE_SYM[f.stage];
+  const bits = [
+    opts.order ? dim(f.order === null ? " -" : String(f.order).padStart(2)) : "",
+    color(st.c, st.sym),
+    bold(f.id),
+    f.name,
+    f.priority ? dim(f.priority) : "",
+    f.deadline ? f.daysLeft !== null && f.daysLeft < 0 ? color(RED, `~${f.deadline}`) : dim(`~${f.deadline}`) : "",
+    flagTags(f.flags.filter((x) => x !== "carry-over")),
+    f.claimed ? dim(`@${f.claimed.by}`) : ""
+  ].filter(Boolean);
+  return " " + bits.join("  ");
+}
+function cmdBrief() {
+  const t = buildTree();
+  const { events } = load();
+  const b = brief(t, events, REPORTS);
+  ok({ ...b }, () => {
+    if (b.empty) {
+      console.log(`${color(GREEN, "\u2713")} ${today} ${dim(t.week)}  \u4E00\u5207\u6B63\u5E38\uFF0C\u6CA1\u4EC0\u4E48\u8981\u63D0\u7684\u3002`);
+      return;
+    }
+    console.log(`${bold(today)} ${dim(t.week)}`);
+    const section = (title, c, rows) => {
+      if (!rows.length) return;
+      console.log(color(c, ` ${title} (${rows.length})`));
+      for (const f of rows) console.log(taskLine(f));
+    };
+    section("\u5DF2\u903E\u671F", RED, b.overdue);
+    section("\u5C06\u5230\u671F", AMBER, b.dueSoon);
+    section("\u963B\u585E", RED, b.blocked);
+    section("\u505C\u6EDE", GRAY, b.stale);
+    section("\u5F85\u9A8C\u6536\u8D85\u65F6", AMBER, b.reviewStale);
+    section("\u5DF2\u9886\u53D6", GRAY, b.claimed);
+    if (b.behind.length) {
+      console.log(color(AMBER, ` \u4E0A\u5C42\u843D\u540E (${b.behind.length})`));
+      for (const u of b.behind) {
+        const h = HEALTH[u.health];
+        console.log(`  ${color(h.c, h.sym)} ${bold(u.id)}  ${u.name}  ${dim(`${h.label} \xB7 \u8FDB\u5EA6 ${pct(u.progress)} / \u65F6\u95F4 ${pct(u.elapsed)}${u.daysQuiet !== null ? ` \xB7 ${u.daysQuiet} \u5929\u6CA1\u52A8\u9759` : ""}`)}`);
+      }
+    }
+    if (b.proposals.length) {
+      console.log(color(AMBER, ` \u5F85\u5904\u7406\u7684\u5468\u8BA1\u5212\u63D0\u6848 (${b.proposals.length})`));
+      for (const p of b.proposals) console.log(`  ${p.file}  ${dim("okr apply --from " + p.file + " --confirmed\uFF0C\u6216 --dismiss")}`);
+    }
+  });
+}
+function cmdWeek() {
+  const t = buildTree();
+  const { events } = load();
+  const w = weekView(t, events, REPORTS, weekFlag(t));
+  ok({ ...w, today }, () => {
+    const prop = w.proposal === "none" ? "" : `  \u63D0\u6848 ${w.proposal}${w.proposals.length > 1 ? ` (${w.proposals.length})` : ""}`;
+    console.log(`${bold(w.week)} ${dim(`${w.start.slice(5)} \u2192 ${w.end.slice(5)}`)}${w.current ? dim("  \u672C\u5468") : ""}${color(w.proposal === "pending" ? AMBER : GRAY, prop)}`);
+    if (!w.planned.length) console.log(dim(" \u8FD9\u5468\u8FD8\u6CA1\u6392\u4EFB\u52A1\u3002okr candidates \u770B\u5019\u9009\uFF0C\u63D0\u6848\u5199\u5230 reports/" + w.week + ".plan.yaml \u518D okr apply\u3002"));
+    for (const f of w.planned) console.log(taskLine(f, { order: true }));
+    if (w.carryOver.length) {
+      console.log(color(AMBER, ` \u9057\u7559 (${w.carryOver.length})`) + dim("  \u4E0A\u5468\u53CA\u66F4\u65E9\u6392\u7684\uFF0C\u672A\u5B8C\u6210\uFF1Bapply \u65F6\u5FC5\u987B\u8FDB plan \u6216 drop"));
+      for (const f of w.carryOver) console.log(taskLine(f) + dim(`  ${f.week}`));
+    }
+  });
+}
+function cmdCandidates() {
+  const t = buildTree();
+  const rows = candidates(t, { dispatchable: flag("dispatchable") });
+  ok({ today, week: t.week, candidates: rows }, () => {
+    if (!rows.length) {
+      console.log(dim(flag("dispatchable") ? "\u6CA1\u6709\u53EF\u6D3E\u5DE5\u7684\u4EFB\u52A1\uFF08spec \u9F50\u5168\u3001\u4F9D\u8D56\u5DF2\u5B8C\u6210\uFF09\u3002" : "\u6CA1\u6709\u672A\u5B8C\u6210\u7684\u4EFB\u52A1\u3002"));
+      return;
+    }
+    console.log(dim(` ${rows.length} \u4E2A\u5019\u9009 \xB7 \u6309\u4F18\u5148\u7EA7 \u2192 \u622A\u6B62 \u6392\u5E8F\uFF0C\u600E\u4E48\u9009\u770B protocol \xA76`));
+    for (const c of rows) {
+      const tags = [
+        c.planned ? dim(c.week) : "",
+        c.carryOver ? color(AMBER, "\u9057\u7559") : "",
+        c.upper ? dim(`${c.upper.id}${c.upper.gap !== null ? ` ${c.upper.gap >= 0 ? "+" : ""}${Math.round(c.upper.gap * 100)}%` : ""}`) : "",
+        c.depsOpen ? color(AMBER, `\u7B49 ${c.deps.filter((d) => !d.done).map((d) => d.id).join(",")}`) : "",
+        c.dependents.length ? dim(`\u2192 ${c.dependents.join(",")}`) : "",
+        c.dispatchable ? color(GREEN, "\u53EF\u6D3E") : c.specMissing.length ? dim(`\u7F3A ${c.specMissing.join("/")}`) : ""
+      ].filter(Boolean);
+      console.log(taskLine(c) + "  " + tags.join("  "));
+    }
+  });
+}
+function sinceOrFail(events, dflt) {
+  const spec = str("since") ?? dflt;
+  const r = resolveSince(events, spec);
+  if (!r) fail(`--since \u63A5\u53D7 last-daily / last-weekly / \u65E5\u671F / ISO \u65F6\u95F4\uFF0C\u5F97\u5230 "${spec}"`);
+  return r;
+}
+function cmdChanges() {
+  const t = buildTree();
+  const { events } = load();
+  const s = sinceOrFail(events, "last-daily");
+  const rows = changes(events, s.since);
+  ok({ since: s.since, spec: s.spec, anchor: s.anchor, events: rows, today }, () => {
+    console.log(dim(s.since ? ` \u81EA ${s.since}${s.anchor ? `\uFF08\u4E0A\u6B21 ${s.anchor.kind === "daily" ? "\u65E5\u62A5" : "\u5468\u62A5"}\uFF09` : ""} \u8D77 ${rows.length} \u6761` : ` \u6CA1\u6709${s.spec === "last-daily" ? "\u65E5\u62A5" : "\u5468\u62A5"}\u951A\u70B9\uFF0C\u5217\u51FA\u5168\u90E8 ${rows.length} \u6761`));
+    if (rows.length) console.log(renderEvents(t, { width: cols, events: rows }).join("\n"));
+  });
+}
+function cmdCommits() {
+  requireData();
+  const { events } = load();
+  const s = sinceOrFail(events, "last-weekly");
+  const limit = num("limit") ?? 200;
+  if (limit < 1) fail("--limit \u81F3\u5C11\u4E3A 1");
+  const node = str("node");
+  let repos = loadRepos();
+  if (node) repos = repos.filter((r) => r.node === node);
+  const rows = repoCommits(repos, s.since, limit);
+  ok({ since: s.since, spec: s.spec, limit, repos: rows, today }, () => {
+    if (!rows.length) {
+      console.log(dim(node ? `\u6CA1\u6709\u767B\u8BB0\u5230 ${node} \u7684\u4ED3\u5E93\u3002` : "\u6CA1\u6709\u767B\u8BB0\u4ED3\u5E93\u3002okr repo add <path> --node <id>"));
+      return;
+    }
+    console.log(dim(s.since ? ` \u81EA ${s.since}${s.anchor ? "\uFF08\u4E0A\u6B21\u5468\u62A5\uFF09" : ""} \u8D77` : " \u6CA1\u6709\u5468\u62A5\u951A\u70B9\uFF0C\u53D6\u6700\u8FD1\u7684\u63D0\u4EA4"));
+    for (const r of rows) {
+      console.log(`${bold(r.path)}${r.node ? dim(`  \u2192 ${r.node}`) : ""}${r.error ? color(RED, `  \u2717 ${r.error}`) : dim(`  ${r.commits.length} \u4E2A\u63D0\u4EA4`)}`);
+      for (const c of r.commits) console.log(`  ${dim(c.date.slice(0, 10))} ${color(GRAY, c.hash)} ${c.subject}${dim(` \u2014 ${c.author}`)}`);
+    }
+  });
+}
+function planPath() {
+  const from = str("from");
+  if (!from) fail("\u7528\u6CD5: okr apply --from <plan.yaml> --confirmed | okr apply --dismiss [--from <plan.yaml>]");
+  const direct = resolve2(from);
+  if (existsSync6(direct)) return direct;
+  const inReports = resolve2(REPORTS, from);
+  if (existsSync6(inReports)) return inReports;
+  fail(`\u627E\u4E0D\u5230 ${from}\uFF08\u4E5F\u4E0D\u5728 ${REPORTS}\uFF09`);
+}
+function cmdApply() {
+  if (flag("dismiss")) return cmdDismiss();
+  const path = planPath();
+  let parsed;
+  try {
+    parsed = import_yaml3.default.parse(readFileSync5(path, "utf8"));
+  } catch (err) {
+    fail(`${path} \u4E0D\u662F\u5408\u6CD5 YAML: ${err.message.split("\n")[0]}`);
+  }
+  if (!confirmed) fail("apply \u4F1A\u6539\u7ED3\u6784\uFF0C\u8981 --confirmed\uFF08skill \u5728\u7528\u6237\u770B\u8FC7\u63D0\u6848\u70B9\u5934\u540E\u4F20\uFF09", 3);
+  const file = basename3(path);
+  write((nodes, events) => {
+    const t = project(nodes, events, today);
+    let r;
+    try {
+      r = applyPlan(nodes, events, t, parsed);
+    } catch (err) {
+      if (err instanceof PlanError) fail(err.message, err.code, err.extra);
+      throw err;
+    }
+    const v = guardValidate(nodes, r.nodes, events);
+    const warnings = [...r.warnings, ...v.warnings.filter((w2) => r.created.some((c) => w2.startsWith(`\u8282\u70B9 ${c.id} `)) || r.planned.some((p) => w2.startsWith(`\u8282\u70B9 ${p.id} `)))];
+    if (resolve2(dirname2(path)) !== resolve2(REPORTS)) warnings.push(`${file} \u4E0D\u5728 ${REPORTS} \u4E0B\uFF0Cweek --json \u7684 proposal \u4E0D\u4F1A\u8FFD\u8E2A\u5B83`);
+    saveNodes(r.nodes);
+    const written = [];
+    for (const c of r.created) written.push(mkEvent(c.id, "change", `add ${describe(c)}`));
+    for (const n of r.notes) written.push(mkEvent(n.id, "change", n.note));
+    const summary = `apply ${file}: ${r.week} \u65B0\u5EFA ${r.created.length}\uFF0C\u8BA1\u5212 ${r.planned.length}\uFF0C\u9000\u51FA ${r.dropped.length}${r.kept.length ? `\uFF0C\u4FDD\u7559 ${r.kept.length}` : ""}`;
+    written.push(mkEvent(null, "plan", summary, { source: file, week: r.week }));
+    for (const e of written) appendEvent(e);
+    const after = project(r.nodes, [...events, ...written], today);
+    const w = weekView(after, [...events, ...written], REPORTS, r.week);
+    return {
+      data: { week: r.week, file, created: r.created, planned: r.planned, kept: r.kept, dropped: r.dropped, warnings, events: written, plan: w.planned },
+      msg: summary,
+      human: () => {
+        console.log(`${color(GREEN, "\u2713")} ${summary}`);
+        for (const f of w.planned) console.log(taskLine(f, { order: true }));
+        for (const d of r.dropped) console.log(dim(`  \u9000\u51FA ${d.id}\uFF08\u539F ${d.before}\uFF09`));
+        for (const x of warnings) console.log(color(AMBER, "  ! ") + x);
+      }
+    };
+  });
+}
+function cmdDismiss() {
+  const from = str("from");
+  write((nodes, events) => {
+    const t = project(nodes, events, today);
+    let files = proposalFiles(REPORTS, from ? /^(\d{4}-W\d{2})\./.exec(basename3(from))?.[1] ?? t.week : weekFlag(t), events);
+    if (from) files = files.filter((f) => f.file === basename3(from));
+    if (from && !files.length) fail(`${basename3(from)} \u4E0D\u5728 ${REPORTS} \u4E0B\uFF0C\u6216\u4E0D\u7B26\u5408 <\u5468>.plan[-N].yaml \u547D\u540D`);
+    const pending = files.filter((f) => f.status === "pending");
+    if (!pending.length) fail(from ? `${basename3(from)} \u5DF2\u7ECF\u5904\u7406\u8FC7\uFF08${files[0].status}\uFF09` : `${t.week} \u6CA1\u6709\u5F85\u5904\u7406\u7684\u63D0\u6848`, 3, { files });
+    const written = pending.map((f) => mkEvent(null, "plan", `dismiss ${f.file}`, { source: f.file, week: f.week, dismissed: true }));
+    for (const e of written) appendEvent(e);
+    return {
+      data: { dismissed: pending.map((f) => f.file), events: written },
+      msg: `dismiss ${pending.map((f) => f.file).join(" ")}`,
+      human: () => console.log(`${color(GREEN, "\u2713")} \u5DF2\u653E\u5F03\u63D0\u6848 ${pending.map((f) => f.file).join("\u3001")}`)
+    };
+  });
+}
+function cmdReport() {
+  const sub = args._[1];
+  if (sub === "write") fail("report write \u5728\u4E0B\u4E00\u6B65\u5B9E\u73B0\uFF1B\u5148\u7528 okr report data --json \u53D6\u6570\u636E\uFF0C\u62A5\u544A\u7531 skill \u5199\u5230 reports/\u3002");
+  if (sub !== "data") fail("\u7528\u6CD5: okr report data [--week 2026-W36]");
+  const t = buildTree();
+  const { events } = load();
+  const r = reportData(t, events, REPORTS, weekFlag(t));
+  ok({ ...r }, () => {
+    console.log(`${bold(r.week)} ${dim(`${r.start} \u2192 ${r.end}`)}${r.current ? dim("  \u672C\u5468") : ""}`);
+    const moved = r.nodes.filter((n) => n.kind !== "task" && n.kind !== "habit");
+    if (moved.length) {
+      console.log(dim(" \u76EE\u6807 / KR / \u91CC\u7A0B\u7891"));
+      for (const n of moved) {
+        const h = HEALTH[n.health];
+        const delta = n.delta === null ? "" : n.delta === 0 ? dim("  \u2014") : color(n.delta > 0 ? GREEN : RED, `  ${n.delta > 0 ? "+" : ""}${Math.round(n.delta * 100)}%`);
+        console.log(`  ${"  ".repeat(n.depth)}${color(h.c, h.sym)} ${bold(n.id)} ${n.name}  ${dim(pct(n.progress))}${delta}${n.current !== null ? dim(`  ${n.current}${n.unit ?? ""}`) : ""}`);
+      }
+    }
+    console.log(dim(` \u5B8C\u6210 ${r.done.length} \u4E2A\u4EFB\u52A1`) + (r.done.length ? "  " + r.done.map((d) => `${d.id}${d.hours !== null ? `(${d.hours}h)` : ""}`).join(" ") : ""));
+    const ev2 = Object.entries(r.events).map(([k, v]) => `${k} ${v}`).join(" \xB7 ");
+    if (ev2) console.log(dim(` \u4E8B\u4EF6  ${ev2}`));
+    console.log(dim(` \u5468\u8BA1\u5212 ${r.plan.planned.length} \u4E2A\uFF0C\u9057\u7559 ${r.plan.carryOver.length} \u4E2A\uFF0C\u63D0\u6848 ${r.plan.proposal}`));
+    if (!r.brief.empty) console.log(dim(` \u5F85\u5173\u6CE8  \u903E\u671F ${r.brief.overdue.length} \xB7 \u5C06\u5230\u671F ${r.brief.dueSoon.length} \xB7 \u963B\u585E ${r.brief.blocked.length} \xB7 \u505C\u6EDE ${r.brief.stale.length} \xB7 \u4E0A\u5C42\u843D\u540E ${r.brief.behind.length}`));
+    console.log(dim(" \u5B8C\u6574\u6570\u636E okr report data --json"));
+  });
+}
 function nodeJson(s) {
   const task = s.node.kind === "task";
   return {
@@ -9807,7 +10392,7 @@ function showSpec(t, s) {
     p = p.parent;
   }
   ok(
-    { id: n.id, name: n.name, path: pathIds, stage: s.stage, dispatchable: s.dispatchable, spec: sp, missing: specMissing(n), deps, claimed: s.claimed, submits, rejects, commands },
+    { id: n.id, name: n.name, path: pathIds, stage: s.stage, dispatchable: s.dispatchable, spec: sp, missing: specMissing2(n), deps, claimed: s.claimed, submits, rejects, commands },
     () => {
       const L = [];
       L.push(`# \u4EFB\u52A1 ${n.id}\uFF1A${n.name}`);
@@ -9836,7 +10421,7 @@ function showSpec(t, s) {
         for (const x of rejects) L.push(`- ${dayOf(x.ts)}\uFF1A${x.note}${x.body ? "\n  " + x.body.replace(/\n/g, "\n  ") : ""}`);
       }
       if (s.dispatchable) L.push("", "> \u53EF\u6D3E\u5DE5");
-      if (!s.dispatchable) L.push("", `> \u4E0D\u53EF\u6D3E\u5DE5\uFF1A${specMissing(n).length ? "spec \u7F3A " + specMissing(n).join("\u3001") : deps.some((d) => !d.done) ? "\u4F9D\u8D56\u672A\u5B8C\u6210" : s.stage === "done" ? "\u5DF2\u5B8C\u6210" : "\u72B6\u6001\u975E active"}`);
+      if (!s.dispatchable) L.push("", `> \u4E0D\u53EF\u6D3E\u5DE5\uFF1A${specMissing2(n).length ? "spec \u7F3A " + specMissing2(n).join("\u3001") : deps.some((d) => !d.done) ? "\u4F9D\u8D56\u672A\u5B8C\u6210" : s.stage === "done" ? "\u5DF2\u5B8C\u6210" : "\u72B6\u6001\u975E active"}`);
       L.push("", "## \u56DE\u5199\u547D\u4EE4\uFF08\u7167\u6284\uFF09", "```");
       L.push(...commands);
       L.push("```");
@@ -9844,7 +10429,7 @@ function showSpec(t, s) {
     }
   );
 }
-function specMissing(n) {
+function specMissing2(n) {
   const sp = n.spec ?? {};
   const m = [];
   if (!sp.goal) m.push("goal");
@@ -9861,10 +10446,10 @@ function cmdTui() {
 function cmdProtocol() {
   let text;
   let path = "bundled";
-  if (true) text = '# okr \u534F\u8BAE\uFF08agent \u901A\u7528\uFF09\n\n\u4EFB\u4F55 agent\uFF08Claude Code\u3001Codex\u3001Gemini\u3001\u6267\u884C agent\uFF09\u66FF\u7528\u6237\u8BFB\u5199 `~/.okr` \u90FD\u6309\u8FD9\u4EFD\u6587\u6863\u6765\u3002\u5B83\u4E0D\u4F9D\u8D56\u67D0\u4E2A agent \u7684 skill \u673A\u5236\uFF1B\u4ED3\u5E93\u91CC\u7684 `okr` skill\uFF08\u7ED9\u5BF9\u8BDD agent\uFF1B\u6267\u884C agent \u6682\u65E0\u5355\u72EC skill\uFF0C\u62FF\u5230\u6D3E\u5DE5\u5305\u6309 \xA79 \u5951\u7EA6\u505A\uFF09\u548C `AGENTS.okr.md` \u7247\u6BB5\u90FD\u53EA\u662F\u628A\u8FD9\u4EFD\u6587\u6863\u63A5\u8FDB\u5404\u81EA\u7684\u5BF9\u8BDD\u3002\u6570\u636E\u6A21\u578B\u3001\u63A8\u5BFC\u89C4\u5219\u548C\u5B88\u536B\u7684\u5B8C\u6574\u5B9A\u4E49\u5728 `DESIGN.md`\uFF0C\u8FD9\u91CC\u53EA\u8BB2 agent \u8BE5\u600E\u4E48\u505A\u3002\n\n## 0. \u4E09\u53E5\u8BDD\n\n1. \u53EA\u901A\u8FC7 `okr` \u547D\u4EE4\u8BFB\u5199\uFF0C\u6C38\u8FDC\u5E26 `--json`\uFF1B\u4E0D\u76F4\u63A5\u6539 `~/.okr` \u91CC\u7684\u6587\u4EF6\uFF0C\u4E0D\u5728 `~/.okr` \u91CC\u8DD1 git\u3002\n2. \u72B6\u6001\u4ECE\u4E8B\u4EF6\u63A8\u5BFC\uFF0Cagent \u53EA\u8D1F\u8D23\u628A\u7528\u6237\u8BF4\u7684\u8BDD\u7FFB\u6210\u5BF9\u7684\u4E8B\u4EF6\uFF0C\u5199\u4E4B\u524D\u5148\u770B `okr recent`\u3002\n3. \u52A8\u7ED3\u6784\u3001\u6807 KR / \u76EE\u6807 / \u91CC\u7A0B\u7891\u5B8C\u6210\u3001\u843D\u5468\u8BA1\u5212\uFF0C\u90FD\u8981\u7528\u6237\u70B9\u5934\uFF0C\u70B9\u5934\u540E\u624D\u4F20 `--confirmed`\u3002\n\n## 1. \u73AF\u5883\u4E0E\u7EA6\u5B9A\n\n- \u6570\u636E\u76EE\u5F55 `OKR_DIR`\uFF0C\u7F3A\u7701 `~/.okr`\u3002\u6CA1\u6709 `nodes.yaml` \u5C31\u5148\u95EE\u7528\u6237\u662F\u5426 `okr init`\uFF08\u65E7 `goals.yaml` \u7528 `okr migrate`\uFF09\u3002\n- `--by <agent>` \u6807\u8BB0\u5199\u5165\u8005\uFF1AClaude Code \u7528 `claude`\uFF0CCodex \u7528 `codex`\uFF0CGemini \u7528 `gemini`\uFF0C\u6267\u884C agent \u7528\u6D3E\u5DE5\u5305\u91CC\u7ED9\u7684\u540D\u5B57\u3002\u6BCF\u6761\u547D\u4EE4\u663E\u5F0F\u4F20\uFF0C\u4E0D\u4F9D\u8D56\u73AF\u5883\u53D8\u91CF `OKR_BY`\uFF08agent \u7684 shell \u73AF\u5883\u4E0D\u6301\u4E45\uFF09\u3002\n- `--json` \u8BFB\u5199\u90FD\u652F\u6301\uFF0C\u9519\u8BEF\u4E5F\u662F JSON\uFF08`{ok:false,error,code}`\uFF09\u3002\u4EBA\u7C7B\u53EF\u8BFB\u8F93\u51FA\u53EA\u7ED9\u7528\u6237\u770B\uFF0Cagent \u89E3\u6790 JSON\u3002\n- \u9000\u51FA\u7801\uFF1A0 \u6210\u529F\uFF1B1 \u4E00\u822C\u9519\u8BEF\uFF1B2 \u6307\u4EE3\u6B67\u4E49\u6216\u6CA1\u6709\u5339\u914D\uFF08JSON \u91CC\u5E26 `candidates`\uFF0C\u4E3A\u7A7A\u5373\u6CA1\u6709\u8FD9\u4E2A\u8282\u70B9\uFF09\uFF1B3 \u5B88\u536B\u62D2\u7EDD\u6216 validate \u5931\u8D25\uFF1B4 \u9501\u8D85\u65F6\uFF08\u7B49\u4E00\u79D2\u91CD\u8BD5\u4E00\u6B21\uFF0C\u518D\u5931\u8D25\u5C31\u62A5\u7ED9\u7528\u6237\uFF09\u3002\n- \u65F6\u95F4\uFF1A\u4E8B\u4EF6\u65F6\u95F4 `ts` \u7F3A\u7701\u4E3A\u5199\u5165\u65F6\u523B\u3002\u7528\u6237\u8BF4\u7684\u662F\u4E4B\u524D\u53D1\u751F\u7684\u4E8B\uFF08\u300C\u6628\u5929\u8DD1\u5B8C\u4E86\u300D\u300C\u4E0A\u5468\u63D0\u7684 PR\u300D\uFF09\uFF0C\u4F20 `--at 2026-09-02`\uFF08\u65E5\u671F\u53D6\u5F53\u5929\u4E2D\u5348\uFF0C\u4ECA\u5929\u53D6\u5F53\u524D\u65F6\u523B\uFF09\u6216\u5B8C\u6574\u672C\u5730\u65F6\u95F4 `--at 2026-09-02T21:00:00+08:00`\u3002\u672A\u6765\u65F6\u95F4\u4F1A\u88AB\u62D2\u7EDD\u3002\n- `--today` \u53EA\u7ED9\u8BFB\u547D\u4EE4\u505A\u300C\u5047\u88C5\u4ECA\u5929\u662F\u300D\u7528\uFF0C\u5199\u547D\u4EE4\u4F20\u4E86\u4F1A\u88AB\u62D2\u7EDD\u3002`--demo` \u662F\u53EA\u8BFB\u793A\u4F8B\u6570\u636E\u3002\n- \u8282\u70B9\u53EF\u4EE5\u7528 id \u6216\u540D\u5B57\u5173\u952E\u8BCD\u6307\u4EE3\u3002CLI \u5339\u914D\u5230\u591A\u4E2A\u4F1A\u9000\u51FA\u7801 2 \u5E76\u5217\u51FA\u5019\u9009\uFF0Cagent \u628A\u5019\u9009\u5217\u7ED9\u7528\u6237\u9009\uFF0C\u4E0D\u81EA\u5DF1\u731C\u3002\n- \u4E0D\u8BA4\u8BC6\u7684 `--flag` \u4F1A\u88AB\u62D2\u7EDD\uFF0C\u522B\u81EA\u5DF1\u53D1\u660E\u53C2\u6570\u3002\n\n### \u547D\u4EE4\u5B9E\u73B0\u72B6\u6001\n\nDESIGN.md \xA78 \u5206\u4E94\u6B65\u5F00\u53D1\uFF0C\u76EE\u524D\u5230\u7B2C 2 \u6B65\u3002\u534F\u8BAE\u6309\u6700\u7EC8\u5F62\u6001\u5199\uFF0C\u4E0B\u8868\u6807\u660E\u54EA\u4E9B\u547D\u4EE4\u5DF2\u7ECF\u80FD\u7528\uFF0C\u6CA1\u5230\u4F4D\u7684\u5148\u7528\u66FF\u4EE3\u3002\n\n| \u547D\u4EE4 | \u72B6\u6001 | \u672A\u5B9E\u73B0\u65F6\u7684\u66FF\u4EE3 |\n|---|---|---|\n| `init` `add` `edit` `move` `rm` `tree` `show [--spec]` `validate` `migrate` `repo add\\|rm\\|list` | \u53EF\u7528 | |\n| `log` `done` `block` `claim` `submit` `reject` `assess` `check` `recent` | \u53EF\u7528 | |\n| `status` `velocity` `protocol` | \u53EF\u7528 | |\n| `tui` | \u53EF\u7528\uFF0C\u4EC5\u9650\u7EC8\u7AEF | \u9700\u8981 TTY\uFF0Cagent \u73AF\u5883\u4E0B\u9000\u51FA 1\uFF0Cagent \u7528 `status` / `tree` |\n| `brief` | \u5F85\u5B9E\u73B0\uFF08\xA78 \u6B65 3\uFF09 | `okr tree --json` \u8FC7\u6EE4 task \u7684 `flags`\uFF08overdue / due-soon / blocked / stale / review-stale / claimed / carry-over\uFF09\uFF1B`okr status --json` \u53EA\u6709\u6839\u8282\u70B9\uFF0C\u770B `health`\uFF1B`okr recent --days 7 --json` \u770B\u52A8\u9759 |\n| `week` | \u5F85\u5B9E\u73B0 | `okr tree --json`\uFF0C\u8FC7\u6EE4 `planned` \u6216 `carryOver` \u4E3A true \u7684 task\uFF0C\u6309 `order` \u6392\uFF08\u6CA1\u8BBE `order` \u7684\u6CA1\u6709\u8FD9\u4E2A\u5B57\u6BB5\uFF0C\u6392\u6700\u540E\uFF09 |\n| `candidates [--dispatchable]` | \u5F85\u5B9E\u73B0 | `okr tree --json`\uFF0C\u8FC7\u6EE4 task \u7684 `stage != done`\uFF0C`dispatchable` \u5B57\u6BB5\u5DF2\u6709 |\n| `apply --from plan.yaml` / `--dismiss` | \u5F85\u5B9E\u73B0 | \u7528\u6237\u786E\u8BA4\u63D0\u6848\u540E\u9010\u6761 `okr add \u2026 --week \u2026 --confirmed` \u4E0E `okr edit <id> --week \u2026 --order N` \u843D\u5730 |\n| `commits` `changes` `report` `deliver notes` | \u5F85\u5B9E\u73B0\uFF08\xA78 \u6B65 3\u20134\uFF09 | \u9700\u8981\u63D0\u4EA4\u5217\u8868\u65F6 agent \u81EA\u5DF1 `git -C <repo> log --since` |\n\n## 2. \u4F1A\u8BDD\u5F00\u59CB\n\n\u5148\u8DD1 `okr brief --json`\uFF08\u672A\u5B9E\u73B0\u524D\u6309\u4E0A\u8868\u66FF\u4EE3\uFF09\u3002\u6709\u4E8B\u624D\u63D0\u4E00\u53E5\uFF0C\u6CA1\u4E8B\u4E0D\u8BF4\uFF1A\u5230\u671F\u4E0E\u5C06\u5230\u671F\u3001\u963B\u585E\u3001\u505C\u6EDE\u3001\u5F85\u9A8C\u6536\u8D85\u8FC7 3 \u5929\u3001\u5DF2\u88AB\u6267\u884C agent \u9886\u53D6\u7684\u4EFB\u52A1\u3001\u5F85\u786E\u8BA4\u7684\u5468\u8BA1\u5212\u63D0\u6848\u3002\n\n\u6709\u5F85\u786E\u8BA4\u63D0\u6848\uFF08`week --json` \u7684 `proposal` \u4E3A `pending`\uFF09\uFF1A\u63D0\u9192\u7528\u6237\u786E\u8BA4\uFF0C\u7528\u6237\u70B9\u5934\u5C31 `apply --from <file> --confirmed`\uFF0C\u5426\u6389\u5C31 `apply --dismiss`\u3002\n\n## 3. \u5199\u4E4B\u524D\n\n1. **\u6307\u4EE3**\uFF1A\u786E\u5B9A\u76EE\u6807\u8282\u70B9\u3002\u7528\u6237\u8BF4\u7684\u540D\u5B57\u4E0D\u552F\u4E00\u5C31\u628A\u5019\u9009\u5217\u51FA\u6765\u95EE\uFF0C\u4E0D\u731C\u3002\n2. **\u67E5\u91CD**\uFF1A`okr recent --node <id> --days 7 --json`\u3002CLI \u53EA\u62FF\u8282\u70B9\u7684\u4E0A\u4E00\u6761\u4E8B\u4EF6\u6BD4\uFF1A\u540C\u4E00\u5929\u3001\u540C\u7C7B\u578B\u3001\u5B57\u9762\u76F8\u8FD1\u624D\u62D2\uFF0C\u4E2D\u95F4\u9694\u4E86\u522B\u7684\u4E8B\u4EF6\u5C31\u4E0D\u62E6\uFF08habit \u7684 `check` \u4F8B\u5916\uFF0C\u540C\u4E00\u5929\u53EA\u6536\u4E00\u6B21\uFF09\uFF1B\u300C\u7528\u6237\u4E0A\u5348\u8BF4\u4E86 AUC \u5230 0.8\uFF0C\u4E0B\u5348\u53C8\u63D0\u4E00\u904D\u300D\u8FD9\u7C7B\u8BED\u4E49\u91CD\u590D\u662F agent \u7684\u4E8B\uFF0C\u5DF2\u7ECF\u8BB0\u8FC7\u7684\u4E0D\u518D\u5199\u3002\u7528\u6237\u660E\u786E\u8BF4\u300C\u518D\u8BB0\u4E00\u6761\u300D\u624D\u52A0 `--force`\u3002\n3. **\u5F52\u5C5E**\uFF1A\u8FD9\u53E5\u8BDD\u5C5E\u4E8E\u54EA\u4E2A\u4EFB\u52A1\u3001\u54EA\u4E2A KR\uFF0C\u7531 agent \u5224\u65AD\u3002\u770B\u6811\uFF08`okr tree --json`\uFF09\u3001\u770B\u4ED3\u5E93\u7684 `.okr.yaml`\u3001\u770B\u6700\u8FD1\u4E8B\u4EF6\u3002\u5224\u65AD\u9519\u4E86\u76F4\u63A5\u6539\uFF1A\u4E8B\u4EF6\u4E0D\u5220\uFF0C\u8865\u4E00\u6761\u6B63\u786E\u7684\uFF0C`note` \u91CC\u8BF4\u660E\u300C\u4E0A\u4E00\u6761\u8BB0\u9519\u8282\u70B9\u300D\u3002\n4. **\u6570\u503C\u53EA\u7531\u7528\u6237\u53E3\u8FF0**\uFF1Ametric \u7684 `--value`\u3001\u4EFB\u52A1\u7684 `--hours`\uFF0C\u7528\u6237\u6CA1\u8BF4\u5C31\u4E0D\u5199\uFF0C\u4E0D\u8981\u4ECE PR\u3001\u65E5\u5FD7\u6216\u4E0A\u4E0B\u6587\u63A8\u7B97\u3002\u300C\u5E94\u8BE5\u5230 90 \u4E86\u5427\u300D\u8FD9\u7C7B\u731C\u6D4B\u8BED\u6C14\u5148\u786E\u8BA4\u662F\u4E0D\u662F\u5B9E\u6D4B\u503C\uFF0C\u786E\u8BA4\u524D\u4E0D\u5199\u3002\n\n## 4. \u7528\u6237\u7684\u8BDD \u2192 \u4E8B\u4EF6\n\n| \u7528\u6237\u8BF4 | \u5199\u4EC0\u4E48 |\n|---|---|\n| \u6709\u8FDB\u5C55\u3001\u505A\u4E86\u70B9\u4EC0\u4E48\u3001\u7EA0\u6B63\u4E4B\u524D\u7684\u6570\u5B57 | `okr log <id> "\u4E00\u53E5\u8BDD" [--value N] [--hours N] [--link URL]` |\n| metric \u5230\u4E86\u67D0\u4E2A\u503C | `okr log <kr> "\u6765\u6E90\u6216\u4F9D\u636E" --value N`\u3002value \u662F metric \u5355\u4F4D\u7684\u7EDD\u5BF9\u503C\uFF0C\u4E0D\u662F\u767E\u5206\u6BD4 |\n| \u4EFB\u52A1\u505A\u5B8C\u4E86 | `okr done <task> [--hours N]` |\n| KR / \u76EE\u6807 / \u91CC\u7A0B\u7891\u5B8C\u6210\u4E86 | \u5148\u95EE\u300C\u786E\u8BA4 <\u540D\u5B57> \u5B8C\u6210\uFF1F\u300D\uFF0C\u7528\u6237\u70B9\u5934\u540E `okr done <id> --confirmed` |\n| \u5361\u4F4F\u4E86\u3001\u7B49\u4EBA\u3001\u7B49\u63A5\u53E3 | `okr block <id> "\u5361\u5728\u54EA"`\uFF08\u53EA\u5BF9 task / milestone\uFF09 |\n| \u4E0D\u5361\u4E86\u3001\u6062\u590D\u4E86 | `okr log <id> "\u89E3\u9664\u963B\u585E\uFF1A\u2026"`\u3002\u4EFB\u4E00\u9636\u6BB5\u4E8B\u4EF6\u90FD\u89E3\u9664\u963B\u585E\uFF0C\u4E0D\u9700\u8981\u4E13\u95E8\u547D\u4EE4 |\n| \u9A8C\u6536\u4E0D\u901A\u8FC7\u3001\u8981\u6539 | `okr reject <task> "\u610F\u89C1"`\uFF0C\u4EFB\u52A1\u56DE\u8FDB\u884C\u4E2D\uFF0C`claimed` \u6E05\u7A7A\uFF0C\u91CD\u6D3E\u8981\u6267\u884C agent \u91CD\u65B0 `claim` |\n| \u5DF2\u5B8C\u6210\u7684\u4EFB\u52A1\u8981\u91CD\u65B0\u6253\u5F00 | `okr reject <id> "\u539F\u56E0"`\uFF1B\u975E task \u52A0 `--confirmed` |\n| \u4E60\u60EF\u6253\u5361 | `okr check <habit> [--at \u65E5\u671F]` |\n| \u4E60\u60EF\u4E0D\u505A\u4E86 | `okr edit <habit> --status canceled --confirmed`\uFF08\u4E60\u60EF\u6CA1\u6709 done\uFF09 |\n| \u6682\u505C\u4E00\u4E2A\u76EE\u6807 / \u6062\u590D | `okr edit <id> --status frozen` / `--status active` |\n| \u53D6\u6D88 | `okr edit <id> --status canceled --confirmed` |\n\n\u51BB\u7ED3\u6216\u53D6\u6D88\u7684\u5B50\u6811\u9ED8\u8BA4\u62D2\u7EDD\u4E8B\u4EF6\u7C7B\u5199\u5165\uFF08\u9000\u51FA\u7801 3\uFF09\u3002\u9047\u5230\u5C31\u544A\u8BC9\u7528\u6237\u8FD9\u4E2A\u8282\u70B9\u5DF2\u51BB\u7ED3 / \u53D6\u6D88\uFF0C\u95EE\u662F\u89E3\u51BB\u8FD8\u662F\u7167\u8BB0\uFF08\u7167\u8BB0\u52A0 `--force`\uFF09\uFF0C\u4E0D\u8981\u81EA\u4F5C\u4E3B\u5F20 `--force`\u3002\n\n## 5. \u4E0A\u5C42\u8FDB\u5EA6\u4E0E assess\n\n- \u4E0A\u5C42\u8282\u70B9\uFF08objective / milestone\uFF09\u7684\u8FDB\u5EA6\u9ED8\u8BA4\u4FE1 CLI \u63A8\u5BFC\uFF08`derived`\uFF09\u3002metric \u7684\u8FDB\u5EA6\u6765\u81EA\u6700\u8FD1\u4E00\u6761\u5E26 `value` \u7684 progress\uFF0C\u4E0D\u80FD assess\u3002\n- \u53EA\u5728**\u4E0D\u540C\u610F\u63A8\u5BFC\u503C**\u65F6\u5199 `okr assess <id> --value 0-100 --reason "\u2026"`\u3002\u7406\u7531\u5FC5\u987B\u5F15\u7528\u5177\u4F53\u4EFB\u52A1\u548C KR \u7684\u72B6\u6001\uFF0C\u4F8B\u5982\u300Ckr1 \u5DF2\u5230 86\uFF0Cm1.1 \u63A5\u53E3\u963B\u585E\u4E24\u5468\uFF0C\u6574\u4F53\u7565\u843D\u540E\u300D\u3002\u6CA1\u6709\u7406\u7531\u4F1A\u88AB\u62D2\u7EDD\u3002\n- \u8282\u594F\uFF1A\u5468\u62A5\u65F6\u7EDF\u4E00\u8BC4\u4F30\u4E00\u6B21\u3002\u4E0D\u8981\u6BCF\u6B21 done \u90FD assess\u3002\u540C\u4E00\u8282\u70B9\u540C\u4E00\u5929\u540C\u503C\u3001\u7406\u7531\u76F8\u8FD1\u7684 assess \u4F1A\u88AB\u53BB\u91CD\uFF1B\u5F53\u5929\u6539\u6570\u503C\u53EF\u4EE5\u76F4\u63A5\u5199\u3002\n- assess \u4E4B\u540E\u5B50\u6811\u5185\u51FA\u73B0 done / reject / submit / change \u5C31\u8FC7\u671F\u3002\u89C6\u56FE\u4F1A\u5E76\u6392\u663E\u793A\u65E7 assess \u4E0E\u65B0\u63A8\u5BFC\u503C\uFF0Cagent \u770B\u5230\u8FC7\u671F\u4E0D\u7528\u6025\u7740\u8865\uFF0C\u7B49\u4E0B\u6B21\u5468\u62A5\u3002\n\n## 6. \u62C6\u89E3\u4E0E\u5468\u8BA1\u5212\n\n**\u4EC0\u4E48\u65F6\u5019\u62C6**\uFF1A\u5EFA\u76EE\u6807\u65F6\u3001\u505A\u5468\u8BA1\u5212\u65F6\u3001\u4EFB\u52A1\u5F00\u5DE5\u524D\u3001\u5361\u4F4F\u65F6\u3002\n\n**\u600E\u4E48\u62C6**\uFF1A\u5148\u5728\u5BF9\u8BDD\u91CC\u5C55\u793A\u63D0\u6848\uFF08\u4EFB\u52A1\u540D\u3001\u4F18\u5148\u7EA7\u3001\u622A\u6B62\u3001\u6240\u5C5E\u3001\u4E00\u53E5\u4E3A\u4EC0\u4E48\uFF09\uFF0C\u7528\u6237\u786E\u8BA4\u540E\u518D\u843D\u76D8\u3002\u5F53\u5929\u7684\u6B65\u9AA4\u53EA\u5728\u5BF9\u8BDD\u91CC\u8BF4\uFF0C\u4E0D\u5199\u8FDB okr\u3002\n\n**\u843D\u76D8\u65B9\u5F0F**\uFF1A\u5199 `reports/<\u5468>.plan.yaml`\uFF08\u5468\u62A5\u63D0\u6848\uFF09\u6216 `reports/<\u5468>.plan-2.yaml`\u3001`plan-3.yaml`\uFF08\u4E2D\u9014\u62C6\u89E3\uFF0C\u4E0D\u8986\u76D6\u5468\u62A5\u63D0\u6848\uFF09\uFF0C\u7136\u540E `okr apply --from <file> --confirmed`\u3002`apply` \u672A\u5B9E\u73B0\u524D\u7528\u9010\u6761 add / edit \u843D\u5730\uFF08\u89C1 \xA71 \u8868\uFF09\u3002\n\n```yaml\nweek: 2026-W36\nnew:                        # \u65B0\u5EFA\u4EFB\u52A1\uFF0C\u5B57\u6BB5\u540C\u8282\u70B9\uFF1Bid \u53EF\u7701\u7565\n  - {id: kr1.3, parent: kr1, name: \u7279\u5F81 v3, priority: P1, deadline: 2026-09-05, spec: {...}}\n  - {parent: kr1, name: \u8BC4\u6D4B\u811A\u672C, priority: P2}\nplan: [t41, kr1.3, new:1]   # \u672C\u5468\u5168\u96C6\uFF0C\u6309\u4F18\u5148\u987A\u5E8F\uFF1Bnew:N \u5F15\u7528 new \u5217\u8868\u4E0B\u6807\uFF0C0 \u8D77\u7B97\ndrop: [t39]                 # \u9057\u7559\u4EFB\u52A1\u9000\u51FA\u672C\u5468\uFF0C\u6E05\u7A7A week\n```\n\n\u6BCF\u4E2A\u9057\u7559\u4EFB\u52A1\uFF08`week` \u65E9\u4E8E\u672C\u5468\u3001\u672A\u5B8C\u6210\u3001active\uFF09\u5FC5\u987B\u51FA\u73B0\u5728 `plan` \u6216 `drop` \u91CC\uFF0C\u5426\u5219 apply \u62D2\u7EDD\u5E76\u5217\u51FA\u3002\n\n**\u4EFB\u52A1\u7C92\u5EA6**\uFF1A\u4E00\u4E2A PR \u88C5\u5F97\u4E0B\uFF0C\u7528\u6237\u4E00\u6B21\u80FD\u5BA1\u5B8C\u3002\u6D3E\u7ED9\u6267\u884C agent \u7684\u4EFB\u52A1 `spec` \u56DB\u9879\u8981\u9F50\uFF1A`--goal`\uFF08\u505A\u4EC0\u4E48\u3001\u52A8\u54EA\u4E2A\u4ED3\u5E93\u548C\u6A21\u5757\u3001\u660E\u786E\u4E0D\u52A8\u4EC0\u4E48\uFF09\u3001`--accept`\uFF08\u53EF\u91CD\u590D\uFF0C\u9010\u6761\u9A8C\u6536\u6807\u51C6\uFF09\u3001`--verify`\uFF08\u63D0 PR \u524D\u5FC5\u987B\u901A\u8FC7\u7684\u547D\u4EE4\uFF09\u3001`--link`\uFF08\u6587\u6863\u3001issue\u3001\u4E4B\u524D\u7684 PR\uFF09\u3002\n\n**\u6392\u5E8F\u4F9D\u636E**\uFF08\u7B97\u6CD5\u5728 agent\uFF0CCLI \u53EA\u7ED9\u4E8B\u5B9E\uFF09\uFF1A\u622A\u6B62\u548C\u6743\u91CD\u3001\u843D\u540E\u6700\u591A\u7684 KR\u3001\u4F9D\u8D56\u94FE\uFF08\u88AB\u4F9D\u8D56\u7684\u5148\u505A\uFF09\u3001\u7528\u6237\u8FD1\u671F\u541E\u5410\uFF08`okr velocity --json`\uFF09\u3002\u4ECA\u65E5\u6E05\u5355\u4ECE\u672C\u5468\u4EFB\u52A1\u91CC\u6311\uFF0C\u6309\u987A\u5E8F\u5217\u5B8C\uFF0C\u6BCF\u6761\u4E00\u53E5\u4E3A\u4EC0\u4E48\u3002\n\n## 7. \u7ED3\u6784\u53D8\u66F4\n\n`add` / `move` / `rm` / `apply` \u90FD\u8981 `--confirmed`\u3002`--confirmed` \u662F\u300C\u7528\u6237\u70B9\u8FC7\u5934\u300D\u7684\u8BB0\u5F55\uFF0C\u4E0D\u662F\u9632\u7EBF\uFF1Aagent \u5148\u628A\u8981\u505A\u7684\u4E8B\u8BF4\u6E05\u695A\uFF0C\u7528\u6237\u540C\u610F\u540E\u624D\u4F20\u3002`edit` \u6539\u5B57\u6BB5\u4E0D\u9700\u8981\uFF1B\u628A `status` \u6539\u6210 canceled CLI \u4E0D\u5F3A\u5236\uFF0C\u4F46\u534F\u8BAE\u4E0A\u8981\u7528\u6237\u70B9\u5934\uFF0C\u70B9\u5934\u540E\u540C\u6837\u5E26 `--confirmed` \u8BB0\u5165\u5BA1\u8BA1\u3002\n\n- `okr add --name \u2026 --kind objective|metric|milestone|task|habit --parent <id> \u2026`\u3002\u6709 `--parent` \u4E5F\u8981\u663E\u5F0F `--kind`\uFF0C\u53EA\u6709 `--metric \u5355\u4F4D:from:to` \u6216 `--cadence 3/week` \u80FD\u63A8\u51FA kind\u3002\n- objective / metric / milestone \u5B57\u6BB5\uFF1A`--area` `--start` `--end` `--weight` `--status active|frozen|canceled`\uFF1Bmetric \u8FD8\u6709 `--metric \u5355\u4F4D:from:to`\uFF08\u6216 `--unit` `--from` `--to`\uFF09\uFF0Chabit \u6709 `--cadence`\u3002\n- \u4EFB\u52A1\u5B57\u6BB5\uFF1A`--priority P0-P3` `--deadline` `--week 2026-W36` `--order` `--dep <id>`\uFF08\u53EF\u91CD\u590D\uFF09`--goal` `--accept` `--verify` `--link`\u3002\n- `--week none` \u8FD9\u7C7B `none` \u6E05\u7A7A\u5B57\u6BB5\u3002\n- `rm` \u53EA\u80FD\u5220\u6CA1\u6709\u4E8B\u4EF6\u3001\u6CA1\u6709\u5B50\u8282\u70B9\u3001\u6CA1\u4EBA\u4F9D\u8D56\u7684\u8282\u70B9\uFF0C\u5176\u4F59\u7528 `edit --status canceled --confirmed`\u3002\n- id \u7531 CLI \u751F\u6210\uFF08`kr1.3`\u3001`t7`\uFF09\uFF0C\u4E0D\u590D\u7528\uFF0C`--json` \u91CC\u56DE\u663E\uFF1B\u540E\u7EED\u6307\u4EE3\u7528 id\u3002\n- deps \u6210\u73AF\u4F1A\u88AB\u62D2\u7EDD\u3002\n\n## 8. \u4ED3\u5E93\u5173\u8054\n\n- \u7528\u6237\u8BF4\u300C\u8FD9\u4E2A\u4ED3\u5E93\u5BF9\u5E94 kr1\u300D\uFF1A`okr repo add <path> --node kr1`\u3002`okr repo list --json` \u770B\u767B\u8BB0\u3002\n- \u4ED3\u5E93\u6839\u76EE\u5F55\u53EF\u4EE5\u653E `.okr.yaml`\uFF0C\u58F0\u660E\u9ED8\u8BA4\u8282\u70B9\uFF0C\u8BA9\u5728\u4ED3\u5E93\u91CC\u5E72\u6D3B\u7684 agent \u77E5\u9053\u5F80\u54EA\u8BB0\uFF1A\n\n```yaml\nnode: kr1          # \u8FD9\u4E2A\u4ED3\u5E93\u7684\u5DE5\u4F5C\u9ED8\u8BA4\u8BB0\u5230\u54EA\u4E2A\u8282\u70B9\n```\n\n  CLI \u4E0D\u8BFB\u8FD9\u4E2A\u6587\u4EF6\uFF0Cagent \u8BFB\u3002\u5728\u4ED3\u5E93\u91CC\u6536\u5230\u300C\u8BB0\u4E00\u4E0B\u8FDB\u5EA6\u300D\u4F46\u6CA1\u70B9\u540D\u8282\u70B9\u65F6\uFF0C\u5148\u770B\u5B83\u3002\n- \u4ECE git \u63D0\u53D6\u8FDB\u5EA6\uFF1ACLI\uFF08`okr commits`\uFF0C\u5F85\u5B9E\u73B0\uFF09\u53EA\u5217\u63D0\u4EA4\uFF0C\u5F52\u7EB3\u662F agent \u7684\u4E8B\uFF0C\u5F52\u7EB3\u7ED3\u679C\u5199\u6210\u4E00\u6761 `log`\uFF0C\u4E0D\u662F\u4E00\u6761\u63D0\u4EA4\u4E00\u6761\u4E8B\u4EF6\u3002\u65F6\u673A\uFF1A\u7528\u6237\u5B8C\u6210\u4E00\u4E2A\u5927\u7248\u672C\u8BA9 agent \u66F4\u65B0\uFF0C\u6216\u7528\u6237\u8BA9 agent \u6C47\u603B\u67D0\u4E2A\u4ED3\u5E93\u3002\n\n## 9. \u6D3E\u5DE5\u4E0E\u6267\u884C agent\n\n\u6D3E\u5DE5\u6682\u65F6\u624B\u52A8\uFF1A\u7528\u6237\u70B9\u540D\u4EFB\u52A1\uFF0C\u81EA\u5DF1\u5F00\u7A97\u683C\u548C worktree\uFF0C\u628A `okr show <id> --spec` \u7684\u8F93\u51FA\u6574\u6BB5\u5582\u7ED9\u6267\u884C agent\u3002\u6D3E\u5DE5\u5305\u5305\u542B spec \u56DB\u9879\u3001\u6240\u5C5E\u3001\u9636\u6BB5\u3001\u4F9D\u8D56\u53CA\u5404\u81EA\u5B8C\u6210\u72B6\u6001\uFF08`[x]` \u5DF2\u5B8C\u6210\u3001`[ ]` \u672A\u5B8C\u6210\uFF1BJSON \u91CC\u662F `deps[].done`\uFF09\u3001\u5386\u53F2 submit \u94FE\u63A5\u3001\u6BCF\u6B21 reject \u7684\u610F\u89C1\uFF0C\u4EE5\u53CA\u53EF\u7167\u6284\u7684\u56DE\u5199\u547D\u4EE4\u3002\n\n`show --spec` \u7ED9\u7684\u4EFB\u52A1\u5982\u679C `dispatchable` \u4E3A false\uFF08spec \u4E0D\u5168\u6216\u4F9D\u8D56\u672A\u5B8C\u6210\uFF09\uFF0C\u5148\u8865 spec \u6216\u7B49\u4F9D\u8D56\uFF0C\u4E0D\u6D3E\u3002\n\n**\u6267\u884C agent \u5951\u7EA6**\uFF08\u62FF\u5230\u6D3E\u5DE5\u5305\u7684 agent \u53EA\u505A\u8FD9\u56DB\u4EF6\u4E8B\uFF0C\u5176\u4ED6\u4E00\u5F8B\u4E0D\u78B0\uFF09\uFF1A\n\n1. \u5F00\u5DE5\u5148 `okr claim <id> --by <agent> --session <session>`\u3002`--session` \u81EA\u5B9A\uFF08worktree \u540D\u5373\u53EF\uFF09\u3002\u5DF2\u88AB\u522B\u4EBA\u9886\u53D6\u4E14\u672A submit \u4F1A\u88AB\u62D2\u7EDD\uFF0C\u56DE\u62A5\u7528\u6237\uFF0C\u4E0D `--force`\u3002\n2. \u5361\u4F4F `okr block <id> "\u5361\u5728\u54EA" --by \u2026 --session \u2026`\u3002\n3. \u89E3\u9664\u963B\u585E\u6216\u5173\u952E\u8FDB\u5C55 `okr log <id> "\u2026" --by \u2026 --session \u2026`\u3002\u65E5\u5E38\u5C0F\u6B65\u9AA4\u4E0D\u8BB0\u3002\n4. \u6D3E\u5DE5\u5305\u91CC\u7684\u9A8C\u8BC1\u547D\u4EE4\u901A\u8FC7\u3001PR \u63D0\u4E86\uFF0C`okr submit <id> --link <PR> --by \u2026 --session \u2026`\u3002\u6CA1\u6709 link \u4F1A\u88AB\u62D2\u7EDD\u3002\n\n\u6267\u884C agent \u4E0D\u5199 `done`\u3001`assess`\u3001`add`\u3001`edit`\uFF0C\u4E0D\u586B `--value` `--hours`\u3002\u9A8C\u6536\u7531\u7528\u6237\u505A\uFF1A\u901A\u8FC7 `okr done`\uFF0C\u4E0D\u901A\u8FC7 `okr reject "\u610F\u89C1"`\uFF0C\u540C\u4E00\u4EFB\u52A1\u7EE7\u7EED\uFF0C\u91CD\u6D3E\u65F6\u6D3E\u5DE5\u5305\u4F1A\u5E26\u4E0A\u6253\u56DE\u610F\u89C1\u3002\n\n## 10. \u5B88\u536B\u88AB\u62D2\u65F6\u600E\u4E48\u529E\n\n| \u9000\u51FA\u7801 / \u62A5\u9519 | \u505A\u6CD5 |\n|---|---|\n| 2 \u6B67\u4E49\uFF0C\u5E26 `candidates` | \u975E\u7A7A\u5C31\u5217\u7ED9\u7528\u6237\u9009\uFF1B\u4E3A\u7A7A\u8BF4\u660E\u6CA1\u6709\u8FD9\u4E2A\u8282\u70B9\uFF0C\u95EE\u7528\u6237\u662F\u4E0D\u662F\u8981\u65B0\u5EFA |\n| 3 \u300C\u5185\u5BB9\u76F8\u8FD1\u300D | \u9ED8\u8BA4\u5F53\u91CD\u590D\uFF0C\u544A\u8BC9\u7528\u6237\u5DF2\u8BB0\u8FC7\uFF1B\u7528\u6237\u575A\u6301\u518D `--force` |\n| 3 \u5DF2\u51BB\u7ED3 / \u5DF2\u53D6\u6D88 | \u544A\u8BC9\u7528\u6237\uFF0C\u95EE\u89E3\u51BB\u8FD8\u662F\u7167\u8BB0 |\n| 3 \u9700\u8981 `--confirmed` | \u628A\u8981\u505A\u7684\u4E8B\u8BF4\u7ED9\u7528\u6237\uFF0C\u70B9\u5934\u540E\u52A0\u4E0A\u91CD\u8DD1 |\n| 3 \u5DF2\u88AB\u9886\u53D6 | \u56DE\u62A5\u662F\u8C01\uFF08`by` / `session`\uFF09\u9886\u7684 |\n| 3 submit \u7F3A link / assess \u7F3A reason / assess \u503C\u8D85\u51FA 0\u2013100 | \u8865\u9F50\u518D\u5199\uFF0C\u4E0D\u8981\u7ED5 |\n| 1 `--value` / `--hours` \u4E0D\u662F\u6570\u5B57\u3001\u53C2\u6570\u683C\u5F0F\u9519 | \u6539\u5BF9\u53C2\u6570\u91CD\u8DD1 |\n| 4 \u9501\u8D85\u65F6 | \u7B49\u4E00\u79D2\u91CD\u8BD5\u4E00\u6B21 |\n| `committed: false` | \u6587\u4EF6\u5DF2\u5199\u5165\uFF0C\u53EA\u662F git \u63D0\u4EA4\u5931\u8D25\uFF0C\u63D0\u9192\u7528\u6237\u8DD1 `okr validate` |\n\n## 11. \u62A5\u544A\uFF08\xA78 \u6B65 4 \u4E4B\u540E\u7531\u5B9A\u65F6\u4EFB\u52A1\u89E6\u53D1\uFF09\n\n\u65E5\u62A5\u7531\u811A\u672C\u5224\u65AD\u6709\u6CA1\u6709\u66F4\u65B0\uFF0C\u6709\u66F4\u65B0\u624D\u53EB agent \u5199\uFF1A\u5F85\u786E\u8BA4\u63D0\u6848\u63D0\u793A\u3001\u4ECA\u65E5\u987A\u5E8F\u53CA\u7406\u7531\u3001\u5230\u671F\u4E0E\u963B\u585E\u3001\u5F85\u9A8C\u6536\u4E0E\u5DF2\u9886\u53D6\u3001\u5EFA\u8BAE\u62C6\u89E3\u3001\u6628\u65E5\u8FDB\u5EA6\u3002\u5468\u62A5 agent \u5199\u5168\u6587\uFF1A\u4E0A\u5468\u56DE\u987E\u3001\u5404\u76EE\u6807\u8BC4\u4F30\u4E0E\u5468\u53D8\u5316\u3001\u541E\u5410\u3001\u672C\u5468\u63D0\u6848\uFF08\u540C\u65F6\u5199 `plan.yaml` \u7B49\u7528\u6237\u786E\u8BA4\uFF09\u3001\u98CE\u9669\u3002\u56FE\u7528\u6587\u672C\u5757\u3002\n\n## 12. \u4E0D\u505A\u7684\u4E8B\n\n- \u4E0D\u76F4\u63A5\u7F16\u8F91 `nodes.yaml` / `events.jsonl`\uFF0C\u4E0D\u5728 `~/.okr` \u91CC git commit / checkout / reset\u3002\n- \u4E0D\u63A8\u7B97 metric \u6570\u503C\u548C\u7528\u65F6\u3002\n- \u4E0D\u66FF\u7528\u6237\u786E\u8BA4\uFF1A\u7ED3\u6784\u53D8\u66F4\u3001KR / \u76EE\u6807 / \u91CC\u7A0B\u7891\u5B8C\u6210\u3001\u5468\u8BA1\u5212\u843D\u5730\u3001`--force`\u3002\n- \u4E0D\u6BCF\u6B21 done \u90FD assess\uFF0C\u4E0D\u628A\u5F53\u5929\u7684\u6B65\u9AA4\u5199\u8FDB okr\u3002\n- \u4E0D\u628A\u63D0\u4EA4\u4E00\u6761\u6761\u8BB0\u6210\u4E8B\u4EF6\u3002\n- \u6267\u884C agent \u53EA\u5199 claim / block / log / submit\u3002\n';
+  if (true) text = '# okr \u534F\u8BAE\uFF08agent \u901A\u7528\uFF09\n\n\u4EFB\u4F55 agent\uFF08Claude Code\u3001Codex\u3001Gemini\u3001\u6267\u884C agent\uFF09\u66FF\u7528\u6237\u8BFB\u5199 `~/.okr` \u90FD\u6309\u8FD9\u4EFD\u6587\u6863\u6765\u3002\u5B83\u4E0D\u4F9D\u8D56\u67D0\u4E2A agent \u7684 skill \u673A\u5236\uFF1B\u4ED3\u5E93\u91CC\u7684 `okr` skill\uFF08\u7ED9\u5BF9\u8BDD agent\uFF1B\u6267\u884C agent \u6682\u65E0\u5355\u72EC skill\uFF0C\u62FF\u5230\u6D3E\u5DE5\u5305\u6309 \xA79 \u5951\u7EA6\u505A\uFF09\u548C `AGENTS.okr.md` \u7247\u6BB5\u90FD\u53EA\u662F\u628A\u8FD9\u4EFD\u6587\u6863\u63A5\u8FDB\u5404\u81EA\u7684\u5BF9\u8BDD\u3002\u6570\u636E\u6A21\u578B\u3001\u63A8\u5BFC\u89C4\u5219\u548C\u5B88\u536B\u7684\u5B8C\u6574\u5B9A\u4E49\u5728 `DESIGN.md`\uFF0C\u8FD9\u91CC\u53EA\u8BB2 agent \u8BE5\u600E\u4E48\u505A\u3002\n\n## 0. \u4E09\u53E5\u8BDD\n\n1. \u53EA\u901A\u8FC7 `okr` \u547D\u4EE4\u8BFB\u5199\uFF0C\u6C38\u8FDC\u5E26 `--json`\uFF1B\u4E0D\u76F4\u63A5\u6539 `~/.okr` \u91CC\u7684\u6587\u4EF6\uFF0C\u4E0D\u5728 `~/.okr` \u91CC\u8DD1 git\u3002\n2. \u72B6\u6001\u4ECE\u4E8B\u4EF6\u63A8\u5BFC\uFF0Cagent \u53EA\u8D1F\u8D23\u628A\u7528\u6237\u8BF4\u7684\u8BDD\u7FFB\u6210\u5BF9\u7684\u4E8B\u4EF6\uFF0C\u5199\u4E4B\u524D\u5148\u770B `okr recent`\u3002\n3. \u52A8\u7ED3\u6784\u3001\u6807 KR / \u76EE\u6807 / \u91CC\u7A0B\u7891\u5B8C\u6210\u3001\u843D\u5468\u8BA1\u5212\uFF0C\u90FD\u8981\u7528\u6237\u70B9\u5934\uFF0C\u70B9\u5934\u540E\u624D\u4F20 `--confirmed`\u3002\n\n## 1. \u73AF\u5883\u4E0E\u7EA6\u5B9A\n\n- \u6570\u636E\u76EE\u5F55 `OKR_DIR`\uFF0C\u7F3A\u7701 `~/.okr`\u3002\u6CA1\u6709 `nodes.yaml` \u5C31\u5148\u95EE\u7528\u6237\u662F\u5426 `okr init`\uFF08\u65E7 `goals.yaml` \u7528 `okr migrate`\uFF09\u3002\n- `--by <agent>` \u6807\u8BB0\u5199\u5165\u8005\uFF1AClaude Code \u7528 `claude`\uFF0CCodex \u7528 `codex`\uFF0CGemini \u7528 `gemini`\uFF0C\u6267\u884C agent \u7528\u6D3E\u5DE5\u5305\u91CC\u7ED9\u7684\u540D\u5B57\u3002\u6BCF\u6761\u547D\u4EE4\u663E\u5F0F\u4F20\uFF0C\u4E0D\u4F9D\u8D56\u73AF\u5883\u53D8\u91CF `OKR_BY`\uFF08agent \u7684 shell \u73AF\u5883\u4E0D\u6301\u4E45\uFF09\u3002\n- `--json` \u8BFB\u5199\u90FD\u652F\u6301\uFF0C\u9519\u8BEF\u4E5F\u662F JSON\uFF08`{ok:false,error,code}`\uFF09\u3002\u4EBA\u7C7B\u53EF\u8BFB\u8F93\u51FA\u53EA\u7ED9\u7528\u6237\u770B\uFF0Cagent \u89E3\u6790 JSON\u3002\n- \u9000\u51FA\u7801\uFF1A0 \u6210\u529F\uFF1B1 \u4E00\u822C\u9519\u8BEF\uFF1B2 \u6307\u4EE3\u6B67\u4E49\u6216\u6CA1\u6709\u5339\u914D\uFF08JSON \u91CC\u5E26 `candidates`\uFF0C\u4E3A\u7A7A\u5373\u6CA1\u6709\u8FD9\u4E2A\u8282\u70B9\uFF09\uFF1B3 \u5B88\u536B\u62D2\u7EDD\u6216 validate \u5931\u8D25\uFF1B4 \u9501\u8D85\u65F6\uFF08\u7B49\u4E00\u79D2\u91CD\u8BD5\u4E00\u6B21\uFF0C\u518D\u5931\u8D25\u5C31\u62A5\u7ED9\u7528\u6237\uFF09\u3002\n- \u65F6\u95F4\uFF1A\u4E8B\u4EF6\u65F6\u95F4 `ts` \u7F3A\u7701\u4E3A\u5199\u5165\u65F6\u523B\u3002\u7528\u6237\u8BF4\u7684\u662F\u4E4B\u524D\u53D1\u751F\u7684\u4E8B\uFF08\u300C\u6628\u5929\u8DD1\u5B8C\u4E86\u300D\u300C\u4E0A\u5468\u63D0\u7684 PR\u300D\uFF09\uFF0C\u4F20 `--at 2026-09-02`\uFF08\u65E5\u671F\u53D6\u5F53\u5929\u4E2D\u5348\uFF0C\u4ECA\u5929\u53D6\u5F53\u524D\u65F6\u523B\uFF09\u6216\u5B8C\u6574\u672C\u5730\u65F6\u95F4 `--at 2026-09-02T21:00:00+08:00`\u3002\u672A\u6765\u65F6\u95F4\u4F1A\u88AB\u62D2\u7EDD\u3002\n- `--today` \u53EA\u7ED9\u8BFB\u547D\u4EE4\u505A\u300C\u5047\u88C5\u4ECA\u5929\u662F\u300D\u7528\uFF0C\u5199\u547D\u4EE4\u4F20\u4E86\u4F1A\u88AB\u62D2\u7EDD\u3002`--demo` \u662F\u53EA\u8BFB\u793A\u4F8B\u6570\u636E\u3002\n- \u8282\u70B9\u53EF\u4EE5\u7528 id \u6216\u540D\u5B57\u5173\u952E\u8BCD\u6307\u4EE3\u3002CLI \u5339\u914D\u5230\u591A\u4E2A\u4F1A\u9000\u51FA\u7801 2 \u5E76\u5217\u51FA\u5019\u9009\uFF0Cagent \u628A\u5019\u9009\u5217\u7ED9\u7528\u6237\u9009\uFF0C\u4E0D\u81EA\u5DF1\u731C\u3002\n- \u4E0D\u8BA4\u8BC6\u7684 `--flag` \u4F1A\u88AB\u62D2\u7EDD\uFF0C\u522B\u81EA\u5DF1\u53D1\u660E\u53C2\u6570\u3002\n\n### \u547D\u4EE4\u5B9E\u73B0\u72B6\u6001\n\nDESIGN.md \xA78 \u5206\u4E94\u6B65\u5F00\u53D1\uFF0C\u76EE\u524D\u5230\u7B2C 2 \u6B65\u3002\u534F\u8BAE\u6309\u6700\u7EC8\u5F62\u6001\u5199\uFF0C\u4E0B\u8868\u6807\u660E\u54EA\u4E9B\u547D\u4EE4\u5DF2\u7ECF\u80FD\u7528\uFF0C\u6CA1\u5230\u4F4D\u7684\u5148\u7528\u66FF\u4EE3\u3002\n\n| \u547D\u4EE4 | \u72B6\u6001 | \u672A\u5B9E\u73B0\u65F6\u7684\u66FF\u4EE3 |\n|---|---|---|\n| `init` `add` `edit` `move` `rm` `tree` `show [--spec]` `validate` `migrate` `repo add\\|rm\\|list` | \u53EF\u7528 | |\n| `log` `done` `block` `claim` `submit` `reject` `assess` `check` `recent` | \u53EF\u7528 | |\n| `status` `velocity` `protocol` | \u53EF\u7528 | |\n| `tui` | \u53EF\u7528\uFF0C\u4EC5\u9650\u7EC8\u7AEF | \u9700\u8981 TTY\uFF0Cagent \u73AF\u5883\u4E0B\u9000\u51FA 1\uFF0Cagent \u7528 `status` / `tree` |\n| `brief` `week [--week W]` `candidates [--dispatchable]` `changes --since` `commits [--since] [--limit]` `apply --from <plan.yaml> --confirmed` / `apply --dismiss` `report data [--week W]` | \u53EF\u7528 | |\n| `report write` `deliver notes` | \u5F85\u5B9E\u73B0\uFF08\xA78 \u6B65 4\uFF09 | \u65E5\u62A5 / \u5468\u62A5\u7531 agent \u7528 `okr changes --json` / `okr report data --json` \u7684\u6570\u636E\u5199\u6210 markdown \u653E\u5230 `reports/`\uFF0C\u5199\u5B8C\u8BB0\u4E00\u6761 report \u4E8B\u4EF6\u7684\u673A\u5236\u968F\u6B65 4 \u4E00\u8D77\u6765 |\n\n## 2. \u4F1A\u8BDD\u5F00\u59CB\n\n\u5148\u8DD1 `okr brief --json`\u3002`empty` \u4E3A true \u5C31\u4E00\u4E2A\u5B57\u4E0D\u63D0\uFF1B\u5426\u5219\u6309 `overdue` / `dueSoon` / `blocked` / `stale` / `reviewStale` / `claimed` / `behind`\uFF08\u843D\u540E\u6216\u95F2\u7F6E\u7684\u76EE\u6807 / KR / \u91CC\u7A0B\u7891\uFF09/ `proposals`\uFF08\u5F85\u786E\u8BA4\u63D0\u6848\uFF09\u6311\u8981\u7D27\u7684\u8BF4\u3002\u6709\u4E8B\u624D\u63D0\u4E00\u53E5\uFF0C\u6CA1\u4E8B\u4E0D\u8BF4\uFF1A\u5230\u671F\u4E0E\u5C06\u5230\u671F\u3001\u963B\u585E\u3001\u505C\u6EDE\u3001\u5F85\u9A8C\u6536\u8D85\u8FC7 3 \u5929\u3001\u5DF2\u88AB\u6267\u884C agent \u9886\u53D6\u7684\u4EFB\u52A1\u3001\u5F85\u786E\u8BA4\u7684\u5468\u8BA1\u5212\u63D0\u6848\u3002\n\n\u6709\u5F85\u786E\u8BA4\u63D0\u6848\uFF08`week --json` \u7684 `proposal` \u4E3A `pending`\uFF09\uFF1A\u63D0\u9192\u7528\u6237\u786E\u8BA4\uFF0C\u7528\u6237\u70B9\u5934\u5C31 `apply --from <file> --confirmed`\uFF0C\u5426\u6389\u5C31 `apply --dismiss`\u3002\n\n## 3. \u5199\u4E4B\u524D\n\n1. **\u6307\u4EE3**\uFF1A\u786E\u5B9A\u76EE\u6807\u8282\u70B9\u3002\u7528\u6237\u8BF4\u7684\u540D\u5B57\u4E0D\u552F\u4E00\u5C31\u628A\u5019\u9009\u5217\u51FA\u6765\u95EE\uFF0C\u4E0D\u731C\u3002\n2. **\u67E5\u91CD**\uFF1A`okr recent --node <id> --days 7 --json`\u3002CLI \u53EA\u62FF\u8282\u70B9\u7684\u4E0A\u4E00\u6761\u4E8B\u4EF6\u6BD4\uFF1A\u540C\u4E00\u5929\u3001\u540C\u7C7B\u578B\u3001\u5B57\u9762\u76F8\u8FD1\u624D\u62D2\uFF0C\u4E2D\u95F4\u9694\u4E86\u522B\u7684\u4E8B\u4EF6\u5C31\u4E0D\u62E6\uFF08habit \u7684 `check` \u4F8B\u5916\uFF0C\u540C\u4E00\u5929\u53EA\u6536\u4E00\u6B21\uFF09\uFF1B\u300C\u7528\u6237\u4E0A\u5348\u8BF4\u4E86 AUC \u5230 0.8\uFF0C\u4E0B\u5348\u53C8\u63D0\u4E00\u904D\u300D\u8FD9\u7C7B\u8BED\u4E49\u91CD\u590D\u662F agent \u7684\u4E8B\uFF0C\u5DF2\u7ECF\u8BB0\u8FC7\u7684\u4E0D\u518D\u5199\u3002\u7528\u6237\u660E\u786E\u8BF4\u300C\u518D\u8BB0\u4E00\u6761\u300D\u624D\u52A0 `--force`\u3002\n3. **\u5F52\u5C5E**\uFF1A\u8FD9\u53E5\u8BDD\u5C5E\u4E8E\u54EA\u4E2A\u4EFB\u52A1\u3001\u54EA\u4E2A KR\uFF0C\u7531 agent \u5224\u65AD\u3002\u770B\u6811\uFF08`okr tree --json`\uFF09\u3001\u770B\u4ED3\u5E93\u7684 `.okr.yaml`\u3001\u770B\u6700\u8FD1\u4E8B\u4EF6\u3002\u5224\u65AD\u9519\u4E86\u76F4\u63A5\u6539\uFF1A\u4E8B\u4EF6\u4E0D\u5220\uFF0C\u8865\u4E00\u6761\u6B63\u786E\u7684\uFF0C`note` \u91CC\u8BF4\u660E\u300C\u4E0A\u4E00\u6761\u8BB0\u9519\u8282\u70B9\u300D\u3002\n4. **\u6570\u503C\u53EA\u7531\u7528\u6237\u53E3\u8FF0**\uFF1Ametric \u7684 `--value`\u3001\u4EFB\u52A1\u7684 `--hours`\uFF0C\u7528\u6237\u6CA1\u8BF4\u5C31\u4E0D\u5199\uFF0C\u4E0D\u8981\u4ECE PR\u3001\u65E5\u5FD7\u6216\u4E0A\u4E0B\u6587\u63A8\u7B97\u3002\u300C\u5E94\u8BE5\u5230 90 \u4E86\u5427\u300D\u8FD9\u7C7B\u731C\u6D4B\u8BED\u6C14\u5148\u786E\u8BA4\u662F\u4E0D\u662F\u5B9E\u6D4B\u503C\uFF0C\u786E\u8BA4\u524D\u4E0D\u5199\u3002\n\n## 4. \u7528\u6237\u7684\u8BDD \u2192 \u4E8B\u4EF6\n\n| \u7528\u6237\u8BF4 | \u5199\u4EC0\u4E48 |\n|---|---|\n| \u6709\u8FDB\u5C55\u3001\u505A\u4E86\u70B9\u4EC0\u4E48\u3001\u7EA0\u6B63\u4E4B\u524D\u7684\u6570\u5B57 | `okr log <id> "\u4E00\u53E5\u8BDD" [--value N] [--hours N] [--link URL]` |\n| metric \u5230\u4E86\u67D0\u4E2A\u503C | `okr log <kr> "\u6765\u6E90\u6216\u4F9D\u636E" --value N`\u3002value \u662F metric \u5355\u4F4D\u7684\u7EDD\u5BF9\u503C\uFF0C\u4E0D\u662F\u767E\u5206\u6BD4 |\n| \u4EFB\u52A1\u505A\u5B8C\u4E86 | `okr done <task> [--hours N]` |\n| KR / \u76EE\u6807 / \u91CC\u7A0B\u7891\u5B8C\u6210\u4E86 | \u5148\u95EE\u300C\u786E\u8BA4 <\u540D\u5B57> \u5B8C\u6210\uFF1F\u300D\uFF0C\u7528\u6237\u70B9\u5934\u540E `okr done <id> --confirmed` |\n| \u5361\u4F4F\u4E86\u3001\u7B49\u4EBA\u3001\u7B49\u63A5\u53E3 | `okr block <id> "\u5361\u5728\u54EA"`\uFF08\u53EA\u5BF9 task / milestone\uFF09 |\n| \u4E0D\u5361\u4E86\u3001\u6062\u590D\u4E86 | `okr log <id> "\u89E3\u9664\u963B\u585E\uFF1A\u2026"`\u3002\u4EFB\u4E00\u9636\u6BB5\u4E8B\u4EF6\u90FD\u89E3\u9664\u963B\u585E\uFF0C\u4E0D\u9700\u8981\u4E13\u95E8\u547D\u4EE4 |\n| \u9A8C\u6536\u4E0D\u901A\u8FC7\u3001\u8981\u6539 | `okr reject <task> "\u610F\u89C1"`\uFF0C\u4EFB\u52A1\u56DE\u8FDB\u884C\u4E2D\uFF0C`claimed` \u6E05\u7A7A\uFF0C\u91CD\u6D3E\u8981\u6267\u884C agent \u91CD\u65B0 `claim` |\n| \u5DF2\u5B8C\u6210\u7684\u4EFB\u52A1\u8981\u91CD\u65B0\u6253\u5F00 | `okr reject <id> "\u539F\u56E0"`\uFF1B\u975E task \u52A0 `--confirmed` |\n| \u4E60\u60EF\u6253\u5361 | `okr check <habit> [--at \u65E5\u671F]` |\n| \u4E60\u60EF\u4E0D\u505A\u4E86 | `okr edit <habit> --status canceled --confirmed`\uFF08\u4E60\u60EF\u6CA1\u6709 done\uFF09 |\n| \u6682\u505C\u4E00\u4E2A\u76EE\u6807 / \u6062\u590D | `okr edit <id> --status frozen` / `--status active` |\n| \u53D6\u6D88 | `okr edit <id> --status canceled --confirmed` |\n\n\u51BB\u7ED3\u6216\u53D6\u6D88\u7684\u5B50\u6811\u9ED8\u8BA4\u62D2\u7EDD\u4E8B\u4EF6\u7C7B\u5199\u5165\uFF08\u9000\u51FA\u7801 3\uFF09\u3002\u9047\u5230\u5C31\u544A\u8BC9\u7528\u6237\u8FD9\u4E2A\u8282\u70B9\u5DF2\u51BB\u7ED3 / \u53D6\u6D88\uFF0C\u95EE\u662F\u89E3\u51BB\u8FD8\u662F\u7167\u8BB0\uFF08\u7167\u8BB0\u52A0 `--force`\uFF09\uFF0C\u4E0D\u8981\u81EA\u4F5C\u4E3B\u5F20 `--force`\u3002\n\n## 5. \u4E0A\u5C42\u8FDB\u5EA6\u4E0E assess\n\n- \u4E0A\u5C42\u8282\u70B9\uFF08objective / milestone\uFF09\u7684\u8FDB\u5EA6\u9ED8\u8BA4\u4FE1 CLI \u63A8\u5BFC\uFF08`derived`\uFF09\u3002metric \u7684\u8FDB\u5EA6\u6765\u81EA\u6700\u8FD1\u4E00\u6761\u5E26 `value` \u7684 progress\uFF0C\u4E0D\u80FD assess\u3002\n- \u53EA\u5728**\u4E0D\u540C\u610F\u63A8\u5BFC\u503C**\u65F6\u5199 `okr assess <id> --value 0-100 --reason "\u2026"`\u3002\u7406\u7531\u5FC5\u987B\u5F15\u7528\u5177\u4F53\u4EFB\u52A1\u548C KR \u7684\u72B6\u6001\uFF0C\u4F8B\u5982\u300Ckr1 \u5DF2\u5230 86\uFF0Cm1.1 \u63A5\u53E3\u963B\u585E\u4E24\u5468\uFF0C\u6574\u4F53\u7565\u843D\u540E\u300D\u3002\u6CA1\u6709\u7406\u7531\u4F1A\u88AB\u62D2\u7EDD\u3002\n- \u8282\u594F\uFF1A\u5468\u62A5\u65F6\u7EDF\u4E00\u8BC4\u4F30\u4E00\u6B21\u3002\u4E0D\u8981\u6BCF\u6B21 done \u90FD assess\u3002\u540C\u4E00\u8282\u70B9\u540C\u4E00\u5929\u540C\u503C\u3001\u7406\u7531\u76F8\u8FD1\u7684 assess \u4F1A\u88AB\u53BB\u91CD\uFF1B\u5F53\u5929\u6539\u6570\u503C\u53EF\u4EE5\u76F4\u63A5\u5199\u3002\n- assess \u4E4B\u540E\u5B50\u6811\u5185\u51FA\u73B0 done / reject / submit / change \u5C31\u8FC7\u671F\u3002\u89C6\u56FE\u4F1A\u5E76\u6392\u663E\u793A\u65E7 assess \u4E0E\u65B0\u63A8\u5BFC\u503C\uFF0Cagent \u770B\u5230\u8FC7\u671F\u4E0D\u7528\u6025\u7740\u8865\uFF0C\u7B49\u4E0B\u6B21\u5468\u62A5\u3002\n\n## 6. \u62C6\u89E3\u4E0E\u5468\u8BA1\u5212\n\n**\u4EC0\u4E48\u65F6\u5019\u62C6**\uFF1A\u5EFA\u76EE\u6807\u65F6\u3001\u505A\u5468\u8BA1\u5212\u65F6\u3001\u4EFB\u52A1\u5F00\u5DE5\u524D\u3001\u5361\u4F4F\u65F6\u3002\n\n**\u600E\u4E48\u62C6**\uFF1A\u5148\u5728\u5BF9\u8BDD\u91CC\u5C55\u793A\u63D0\u6848\uFF08\u4EFB\u52A1\u540D\u3001\u4F18\u5148\u7EA7\u3001\u622A\u6B62\u3001\u6240\u5C5E\u3001\u4E00\u53E5\u4E3A\u4EC0\u4E48\uFF09\uFF0C\u7528\u6237\u786E\u8BA4\u540E\u518D\u843D\u76D8\u3002\u5F53\u5929\u7684\u6B65\u9AA4\u53EA\u5728\u5BF9\u8BDD\u91CC\u8BF4\uFF0C\u4E0D\u5199\u8FDB okr\u3002\n\n**\u53D6\u6570**\uFF1A`okr week --json` \u770B\u672C\u5468\u5DF2\u6392\uFF08`planned`\uFF0C\u6309 `order`\uFF09\u548C\u9057\u7559\uFF08`carryOver`\uFF1A\u4E0A\u5468\u53CA\u66F4\u65E9\u6392\u4E86\u6CA1\u5B8C\u6210\u7684\uFF09\uFF1B`okr candidates --json` \u5217\u5168\u90E8\u672A\u5B8C\u6210\u4EFB\u52A1\u548C\u6392\u5E8F\u4F9D\u636E\uFF1A`priority`\u3001`deadline` / `daysLeft`\u3001`weight`\u3001\u6240\u5C5E KR \u7684\u843D\u540E\u7A0B\u5EA6\uFF08`upper.gap` = \u8FDB\u5EA6 \u2212 \u65F6\u95F4\uFF0C\u8D1F\u5F97\u8D8A\u591A\u8D8A\u6025\uFF09\u3001\u4F9D\u8D56\uFF08`depsOpen`\u3001`dependents`\uFF09\u3001`carryOver`\u3001`specMissing`\u3001`dispatchable`\u3002CLI \u53EA\u7ED9\u4E8B\u5B9E\uFF0C`--dispatchable` \u53EA\u662F\u8FC7\u6EE4\uFF1B\u6392\u5E8F\u662F agent \u7684\u4E8B\uFF1A\u9057\u7559\u548C\u903E\u671F\u5148\u5904\u7406\uFF0C\u843D\u540E KR \u4E0B\u7684\u4EFB\u52A1\u5176\u6B21\uFF0C\u518D\u6309\u4F18\u5148\u7EA7\u548C\u622A\u6B62\uFF0C\u4E00\u5468\u522B\u8D85\u8FC7\u7528\u6237\u8BF4\u7684\u5BB9\u91CF\uFF08`okr velocity --json` \u662F\u8FD1\u51E0\u5468\u7684\u5B8C\u6210\u6570\uFF09\u3002\n\n**\u843D\u76D8\u65B9\u5F0F**\uFF1A\u5199 `reports/<\u5468>.plan.yaml`\uFF08\u5468\u62A5\u63D0\u6848\uFF09\u6216 `reports/<\u5468>.plan-2.yaml`\u3001`plan-3.yaml`\uFF08\u4E2D\u9014\u62C6\u89E3\uFF0C\u4E0D\u8986\u76D6\u5468\u62A5\u63D0\u6848\uFF09\uFF0C\u7136\u540E `okr apply --from <file> --confirmed`\uFF08`--from` \u7ED9\u6587\u4EF6\u540D\u65F6\u5230 `reports/` \u4E0B\u627E\uFF09\u3002apply \u7684\u89C4\u5219\uFF1A`plan` \u91CC\u7684\u4EFB\u52A1\u5168\u90E8\u8BBE\u6210\u8FD9\u5468\uFF0C`order` \u6309\u5217\u8868\u987A\u5E8F\u63A5\u5728\u300C\u672C\u5468\u5DF2\u6392\u3001\u8FD9\u6B21\u6CA1\u63D0\u5230\u300D\u7684\u4EFB\u52A1\u540E\u9762\uFF0C\u6240\u4EE5\u91CD\u590D apply \u4E0D\u4F1A\u6253\u4E71\u6CA1\u63D0\u5230\u7684\u4EFB\u52A1\uFF1B`drop` \u6E05\u6389 `week` / `order`\uFF1B\u9057\u7559\u4EFB\u52A1\u5FC5\u987B\u51FA\u73B0\u5728 `plan` \u6216 `drop` \u91CC\uFF0C\u5426\u5219\u9000\u51FA\u7801 3\u3001JSON \u91CC `carryOver` \u5217\u51FA\u6F0F\u6389\u7684\uFF1Bspec \u4E0D\u5168\u53EA\u8B66\u544A\u4E0D\u62D2\u7EDD\uFF1B`new` \u91CC\u7701\u7565 id \u5C31\u81EA\u52A8\u751F\u6210\uFF0C`new:N` \u53EF\u4EE5\u51FA\u73B0\u5728 `plan` / `drop` / \u522B\u7684 `new` \u9879\u7684 `parent` / `deps` \u91CC\u3002\u7528\u6237\u5426\u6389\u63D0\u6848\u5C31 `okr apply --dismiss`\uFF08\u5F53\u5468\u6240\u6709\u5F85\u5904\u7406\u7684\uFF09\u6216 `okr apply --dismiss --from <file>`\u3002\n\n```yaml\nweek: 2026-W36\nnew:                        # \u65B0\u5EFA\u4EFB\u52A1\uFF0C\u5B57\u6BB5\u540C\u8282\u70B9\uFF1Bid \u53EF\u7701\u7565\n  - {id: kr1.3, parent: kr1, name: \u7279\u5F81 v3, priority: P1, deadline: 2026-09-05, spec: {...}}\n  - {parent: kr1, name: \u8BC4\u6D4B\u811A\u672C, priority: P2}\nplan: [t41, kr1.3, new:1]   # \u672C\u5468\u5168\u96C6\uFF0C\u6309\u4F18\u5148\u987A\u5E8F\uFF1Bnew:N \u5F15\u7528 new \u5217\u8868\u4E0B\u6807\uFF0C0 \u8D77\u7B97\ndrop: [t39]                 # \u9057\u7559\u4EFB\u52A1\u9000\u51FA\u672C\u5468\uFF0C\u6E05\u7A7A week\n```\n\n\u6BCF\u4E2A\u9057\u7559\u4EFB\u52A1\uFF08`week` \u65E9\u4E8E\u672C\u5468\u3001\u672A\u5B8C\u6210\u3001active\uFF09\u5FC5\u987B\u51FA\u73B0\u5728 `plan` \u6216 `drop` \u91CC\uFF0C\u5426\u5219 apply \u62D2\u7EDD\u5E76\u5217\u51FA\u3002\n\n**\u4EFB\u52A1\u7C92\u5EA6**\uFF1A\u4E00\u4E2A PR \u88C5\u5F97\u4E0B\uFF0C\u7528\u6237\u4E00\u6B21\u80FD\u5BA1\u5B8C\u3002\u6D3E\u7ED9\u6267\u884C agent \u7684\u4EFB\u52A1 `spec` \u56DB\u9879\u8981\u9F50\uFF1A`--goal`\uFF08\u505A\u4EC0\u4E48\u3001\u52A8\u54EA\u4E2A\u4ED3\u5E93\u548C\u6A21\u5757\u3001\u660E\u786E\u4E0D\u52A8\u4EC0\u4E48\uFF09\u3001`--accept`\uFF08\u53EF\u91CD\u590D\uFF0C\u9010\u6761\u9A8C\u6536\u6807\u51C6\uFF09\u3001`--verify`\uFF08\u63D0 PR \u524D\u5FC5\u987B\u901A\u8FC7\u7684\u547D\u4EE4\uFF09\u3001`--link`\uFF08\u6587\u6863\u3001issue\u3001\u4E4B\u524D\u7684 PR\uFF09\u3002\n\n**\u6392\u5E8F\u4F9D\u636E**\uFF08\u7B97\u6CD5\u5728 agent\uFF0CCLI \u53EA\u7ED9\u4E8B\u5B9E\uFF09\uFF1A\u622A\u6B62\u548C\u6743\u91CD\u3001\u843D\u540E\u6700\u591A\u7684 KR\u3001\u4F9D\u8D56\u94FE\uFF08\u88AB\u4F9D\u8D56\u7684\u5148\u505A\uFF09\u3001\u7528\u6237\u8FD1\u671F\u541E\u5410\uFF08`okr velocity --json`\uFF09\u3002\u4ECA\u65E5\u6E05\u5355\u4ECE\u672C\u5468\u4EFB\u52A1\u91CC\u6311\uFF0C\u6309\u987A\u5E8F\u5217\u5B8C\uFF0C\u6BCF\u6761\u4E00\u53E5\u4E3A\u4EC0\u4E48\u3002\n\n## 7. \u7ED3\u6784\u53D8\u66F4\n\n`add` / `move` / `rm` / `apply` \u90FD\u8981 `--confirmed`\u3002`--confirmed` \u662F\u300C\u7528\u6237\u70B9\u8FC7\u5934\u300D\u7684\u8BB0\u5F55\uFF0C\u4E0D\u662F\u9632\u7EBF\uFF1Aagent \u5148\u628A\u8981\u505A\u7684\u4E8B\u8BF4\u6E05\u695A\uFF0C\u7528\u6237\u540C\u610F\u540E\u624D\u4F20\u3002`edit` \u6539\u5B57\u6BB5\u4E0D\u9700\u8981\uFF1B\u628A `status` \u6539\u6210 canceled CLI \u4E0D\u5F3A\u5236\uFF0C\u4F46\u534F\u8BAE\u4E0A\u8981\u7528\u6237\u70B9\u5934\uFF0C\u70B9\u5934\u540E\u540C\u6837\u5E26 `--confirmed` \u8BB0\u5165\u5BA1\u8BA1\u3002\n\n- `okr add --name \u2026 --kind objective|metric|milestone|task|habit --parent <id> \u2026`\u3002\u6709 `--parent` \u4E5F\u8981\u663E\u5F0F `--kind`\uFF0C\u53EA\u6709 `--metric \u5355\u4F4D:from:to` \u6216 `--cadence 3/week` \u80FD\u63A8\u51FA kind\u3002\n- objective / metric / milestone \u5B57\u6BB5\uFF1A`--area` `--start` `--end` `--weight` `--status active|frozen|canceled`\uFF1Bmetric \u8FD8\u6709 `--metric \u5355\u4F4D:from:to`\uFF08\u6216 `--unit` `--from` `--to`\uFF09\uFF0Chabit \u6709 `--cadence`\u3002\n- \u4EFB\u52A1\u5B57\u6BB5\uFF1A`--priority P0-P3` `--deadline` `--week 2026-W36` `--order` `--dep <id>`\uFF08\u53EF\u91CD\u590D\uFF09`--goal` `--accept` `--verify` `--link`\u3002\n- `--week none` \u8FD9\u7C7B `none` \u6E05\u7A7A\u5B57\u6BB5\u3002\n- `rm` \u53EA\u80FD\u5220\u6CA1\u6709\u4E8B\u4EF6\u3001\u6CA1\u6709\u5B50\u8282\u70B9\u3001\u6CA1\u4EBA\u4F9D\u8D56\u7684\u8282\u70B9\uFF0C\u5176\u4F59\u7528 `edit --status canceled --confirmed`\u3002\n- id \u7531 CLI \u751F\u6210\uFF08`kr1.3`\u3001`t7`\uFF09\uFF0C\u4E0D\u590D\u7528\uFF0C`--json` \u91CC\u56DE\u663E\uFF1B\u540E\u7EED\u6307\u4EE3\u7528 id\u3002\n- deps \u6210\u73AF\u4F1A\u88AB\u62D2\u7EDD\u3002\n\n## 8. \u4ED3\u5E93\u5173\u8054\n\n- \u7528\u6237\u8BF4\u300C\u8FD9\u4E2A\u4ED3\u5E93\u5BF9\u5E94 kr1\u300D\uFF1A`okr repo add <path> --node kr1`\u3002`okr repo list --json` \u770B\u767B\u8BB0\u3002\n- \u4ED3\u5E93\u6839\u76EE\u5F55\u53EF\u4EE5\u653E `.okr.yaml`\uFF0C\u58F0\u660E\u9ED8\u8BA4\u8282\u70B9\uFF0C\u8BA9\u5728\u4ED3\u5E93\u91CC\u5E72\u6D3B\u7684 agent \u77E5\u9053\u5F80\u54EA\u8BB0\uFF1A\n\n```yaml\nnode: kr1          # \u8FD9\u4E2A\u4ED3\u5E93\u7684\u5DE5\u4F5C\u9ED8\u8BA4\u8BB0\u5230\u54EA\u4E2A\u8282\u70B9\n```\n\n  CLI \u4E0D\u8BFB\u8FD9\u4E2A\u6587\u4EF6\uFF0Cagent \u8BFB\u3002\u5728\u4ED3\u5E93\u91CC\u6536\u5230\u300C\u8BB0\u4E00\u4E0B\u8FDB\u5EA6\u300D\u4F46\u6CA1\u70B9\u540D\u8282\u70B9\u65F6\uFF0C\u5148\u770B\u5B83\u3002\n- \u4ECE git \u63D0\u53D6\u8FDB\u5EA6\uFF1ACLI\uFF08`okr commits --json`\uFF0C\u6309\u767B\u8BB0\u7684\u4ED3\u5E93\u5217 `git log`\uFF0C\u7F3A\u7701\u81EA\u4E0A\u6B21\u5468\u62A5\u8D77\uFF0C`--since <\u65E5\u671F>` / `--node <id>` / `--limit N` \u6536\u7A84\uFF09\u53EA\u5217\u63D0\u4EA4\uFF0C\u5F52\u7EB3\u662F agent \u7684\u4E8B\uFF0C\u5F52\u7EB3\u7ED3\u679C\u5199\u6210\u4E00\u6761 `log`\uFF0C\u4E0D\u662F\u4E00\u6761\u63D0\u4EA4\u4E00\u6761\u4E8B\u4EF6\u3002\u65F6\u673A\uFF1A\u7528\u6237\u5B8C\u6210\u4E00\u4E2A\u5927\u7248\u672C\u8BA9 agent \u66F4\u65B0\uFF0C\u6216\u7528\u6237\u8BA9 agent \u6C47\u603B\u67D0\u4E2A\u4ED3\u5E93\u3002\n\n## 9. \u6D3E\u5DE5\u4E0E\u6267\u884C agent\n\n\u6D3E\u5DE5\u6682\u65F6\u624B\u52A8\uFF1A\u7528\u6237\u70B9\u540D\u4EFB\u52A1\uFF0C\u81EA\u5DF1\u5F00\u7A97\u683C\u548C worktree\uFF0C\u628A `okr show <id> --spec` \u7684\u8F93\u51FA\u6574\u6BB5\u5582\u7ED9\u6267\u884C agent\u3002\u6D3E\u5DE5\u5305\u5305\u542B spec \u56DB\u9879\u3001\u6240\u5C5E\u3001\u9636\u6BB5\u3001\u4F9D\u8D56\u53CA\u5404\u81EA\u5B8C\u6210\u72B6\u6001\uFF08`[x]` \u5DF2\u5B8C\u6210\u3001`[ ]` \u672A\u5B8C\u6210\uFF1BJSON \u91CC\u662F `deps[].done`\uFF09\u3001\u5386\u53F2 submit \u94FE\u63A5\u3001\u6BCF\u6B21 reject \u7684\u610F\u89C1\uFF0C\u4EE5\u53CA\u53EF\u7167\u6284\u7684\u56DE\u5199\u547D\u4EE4\u3002\n\n`show --spec` \u7ED9\u7684\u4EFB\u52A1\u5982\u679C `dispatchable` \u4E3A false\uFF08spec \u4E0D\u5168\u6216\u4F9D\u8D56\u672A\u5B8C\u6210\uFF09\uFF0C\u5148\u8865 spec \u6216\u7B49\u4F9D\u8D56\uFF0C\u4E0D\u6D3E\u3002\n\n**\u6267\u884C agent \u5951\u7EA6**\uFF08\u62FF\u5230\u6D3E\u5DE5\u5305\u7684 agent \u53EA\u505A\u8FD9\u56DB\u4EF6\u4E8B\uFF0C\u5176\u4ED6\u4E00\u5F8B\u4E0D\u78B0\uFF09\uFF1A\n\n1. \u5F00\u5DE5\u5148 `okr claim <id> --by <agent> --session <session>`\u3002`--session` \u81EA\u5B9A\uFF08worktree \u540D\u5373\u53EF\uFF09\u3002\u5DF2\u88AB\u522B\u4EBA\u9886\u53D6\u4E14\u672A submit \u4F1A\u88AB\u62D2\u7EDD\uFF0C\u56DE\u62A5\u7528\u6237\uFF0C\u4E0D `--force`\u3002\n2. \u5361\u4F4F `okr block <id> "\u5361\u5728\u54EA" --by \u2026 --session \u2026`\u3002\n3. \u89E3\u9664\u963B\u585E\u6216\u5173\u952E\u8FDB\u5C55 `okr log <id> "\u2026" --by \u2026 --session \u2026`\u3002\u65E5\u5E38\u5C0F\u6B65\u9AA4\u4E0D\u8BB0\u3002\n4. \u6D3E\u5DE5\u5305\u91CC\u7684\u9A8C\u8BC1\u547D\u4EE4\u901A\u8FC7\u3001PR \u63D0\u4E86\uFF0C`okr submit <id> --link <PR> --by \u2026 --session \u2026`\u3002\u6CA1\u6709 link \u4F1A\u88AB\u62D2\u7EDD\u3002\n\n\u6267\u884C agent \u4E0D\u5199 `done`\u3001`assess`\u3001`add`\u3001`edit`\uFF0C\u4E0D\u586B `--value` `--hours`\u3002\u9A8C\u6536\u7531\u7528\u6237\u505A\uFF1A\u901A\u8FC7 `okr done`\uFF0C\u4E0D\u901A\u8FC7 `okr reject "\u610F\u89C1"`\uFF0C\u540C\u4E00\u4EFB\u52A1\u7EE7\u7EED\uFF0C\u91CD\u6D3E\u65F6\u6D3E\u5DE5\u5305\u4F1A\u5E26\u4E0A\u6253\u56DE\u610F\u89C1\u3002\n\n## 10. \u5B88\u536B\u88AB\u62D2\u65F6\u600E\u4E48\u529E\n\n| \u9000\u51FA\u7801 / \u62A5\u9519 | \u505A\u6CD5 |\n|---|---|\n| 2 \u6B67\u4E49\uFF0C\u5E26 `candidates` | \u975E\u7A7A\u5C31\u5217\u7ED9\u7528\u6237\u9009\uFF1B\u4E3A\u7A7A\u8BF4\u660E\u6CA1\u6709\u8FD9\u4E2A\u8282\u70B9\uFF0C\u95EE\u7528\u6237\u662F\u4E0D\u662F\u8981\u65B0\u5EFA |\n| 3 \u300C\u5185\u5BB9\u76F8\u8FD1\u300D | \u9ED8\u8BA4\u5F53\u91CD\u590D\uFF0C\u544A\u8BC9\u7528\u6237\u5DF2\u8BB0\u8FC7\uFF1B\u7528\u6237\u575A\u6301\u518D `--force` |\n| 3 \u5DF2\u51BB\u7ED3 / \u5DF2\u53D6\u6D88 | \u544A\u8BC9\u7528\u6237\uFF0C\u95EE\u89E3\u51BB\u8FD8\u662F\u7167\u8BB0 |\n| 3 \u9700\u8981 `--confirmed` | \u628A\u8981\u505A\u7684\u4E8B\u8BF4\u7ED9\u7528\u6237\uFF0C\u70B9\u5934\u540E\u52A0\u4E0A\u91CD\u8DD1 |\n| 3 \u5DF2\u88AB\u9886\u53D6 | \u56DE\u62A5\u662F\u8C01\uFF08`by` / `session`\uFF09\u9886\u7684 |\n| 3 submit \u7F3A link / assess \u7F3A reason / assess \u503C\u8D85\u51FA 0\u2013100 | \u8865\u9F50\u518D\u5199\uFF0C\u4E0D\u8981\u7ED5 |\n| 1 `--value` / `--hours` \u4E0D\u662F\u6570\u5B57\u3001\u53C2\u6570\u683C\u5F0F\u9519 | \u6539\u5BF9\u53C2\u6570\u91CD\u8DD1 |\n| 4 \u9501\u8D85\u65F6 | \u7B49\u4E00\u79D2\u91CD\u8BD5\u4E00\u6B21 |\n| `committed: false` | \u6587\u4EF6\u5DF2\u5199\u5165\uFF0C\u53EA\u662F git \u63D0\u4EA4\u5931\u8D25\uFF0C\u63D0\u9192\u7528\u6237\u8DD1 `okr validate` |\n\n## 11. \u62A5\u544A\uFF08\xA78 \u6B65 4 \u4E4B\u540E\u7531\u5B9A\u65F6\u4EFB\u52A1\u89E6\u53D1\uFF09\n\n\u65E5\u62A5\u7531\u811A\u672C\u5224\u65AD\u6709\u6CA1\u6709\u66F4\u65B0\uFF0C\u6709\u66F4\u65B0\u624D\u53EB agent \u5199\uFF1A\u5F85\u786E\u8BA4\u63D0\u6848\u63D0\u793A\u3001\u4ECA\u65E5\u987A\u5E8F\u53CA\u7406\u7531\u3001\u5230\u671F\u4E0E\u963B\u585E\u3001\u5F85\u9A8C\u6536\u4E0E\u5DF2\u9886\u53D6\u3001\u5EFA\u8BAE\u62C6\u89E3\u3001\u6628\u65E5\u8FDB\u5EA6\u3002\u5468\u62A5 agent \u5199\u5168\u6587\uFF1A\u4E0A\u5468\u56DE\u987E\u3001\u5404\u76EE\u6807\u8BC4\u4F30\u4E0E\u5468\u53D8\u5316\u3001\u541E\u5410\u3001\u672C\u5468\u63D0\u6848\uFF08\u540C\u65F6\u5199 `plan.yaml` \u7B49\u7528\u6237\u786E\u8BA4\uFF09\u3001\u98CE\u9669\u3002\u56FE\u7528\u6587\u672C\u5757\u3002\n\n## 12. \u4E0D\u505A\u7684\u4E8B\n\n- \u4E0D\u76F4\u63A5\u7F16\u8F91 `nodes.yaml` / `events.jsonl`\uFF0C\u4E0D\u5728 `~/.okr` \u91CC git commit / checkout / reset\u3002\n- \u4E0D\u63A8\u7B97 metric \u6570\u503C\u548C\u7528\u65F6\u3002\n- \u4E0D\u66FF\u7528\u6237\u786E\u8BA4\uFF1A\u7ED3\u6784\u53D8\u66F4\u3001KR / \u76EE\u6807 / \u91CC\u7A0B\u7891\u5B8C\u6210\u3001\u5468\u8BA1\u5212\u843D\u5730\u3001`--force`\u3002\n- \u4E0D\u6BCF\u6B21 done \u90FD assess\uFF0C\u4E0D\u628A\u5F53\u5929\u7684\u6B65\u9AA4\u5199\u8FDB okr\u3002\n- \u4E0D\u628A\u63D0\u4EA4\u4E00\u6761\u6761\u8BB0\u6210\u4E8B\u4EF6\u3002\n- \u6267\u884C agent \u53EA\u5199 claim / block / log / submit\u3002\n';
   else {
     path = resolve2(HERE2, "..", "docs", "okr", "PROTOCOL.md");
-    if (!existsSync5(path)) fail(`\u627E\u4E0D\u5230 ${path}`);
+    if (!existsSync6(path)) fail(`\u627E\u4E0D\u5230 ${path}`);
     text = readFileSync5(path, "utf8");
   }
   if (json) console.log(JSON.stringify({ ok: true, path, protocol: text }));
@@ -9897,8 +10482,8 @@ function cmdSkill() {
     });
   } else if (sub === "status") {
     const p = skillPaths();
-    const st = (x) => existsSync5(x) ? "\u5728" : "\u4E0D\u5728";
-    ok({ agents: p.agents, claude: p.claude, installed: existsSync5(p.agents), running: process.argv[1] }, () => {
+    const st = (x) => existsSync6(x) ? "\u5728" : "\u4E0D\u5728";
+    ok({ agents: p.agents, claude: p.claude, installed: existsSync6(p.agents), running: process.argv[1] }, () => {
       console.log(`${p.agents}  ${st(p.agents)}`);
       console.log(`${p.claude}  ${st(p.claude)}`);
       console.log(dim(`\u5F53\u524D\u8FD0\u884C\u7684\u662F ${process.argv[1]}`));
@@ -9918,7 +10503,8 @@ function cmdHelp() {
       "",
       `${bold("\u7ED3\u6784")}   init \xB7 add \xB7 edit \xB7 move \xB7 rm \xB7 tree [--all] \xB7 show <id> [--spec] \xB7 validate [--merge-events] \xB7 migrate \xB7 repo add|rm|list`,
       `${bold("\u8BB0\u5F55")}   log \xB7 done \xB7 block \xB7 claim \xB7 submit --link \xB7 reject \xB7 assess --value --reason \xB7 check \xB7 recent [--node] [--days]`,
-      `${bold("\u6570\u636E")}   velocity [--weeks]`,
+      `${bold("\u6570\u636E")}   brief \xB7 week [--week W] \xB7 candidates [--dispatchable] \xB7 changes [--since last-daily|last-weekly|<ts>] \xB7 commits [--since] [--limit] \xB7 velocity [--weeks] \xB7 report data [--week W]`,
+      `${bold("\u8BA1\u5212")}   apply --from <plan.yaml> --confirmed\uFF08\u89C1 protocol \xA76\uFF09\xB7 apply --dismiss [--from <plan.yaml>]`,
       `${bold("\u89C6\u56FE")}   tui \xB7 status \xB7 tree \xB7 show`,
       `${bold("\u534F\u8BAE")}   protocol\uFF08\u6253\u5370 PROTOCOL.md\uFF0Cagent \u5148\u8BFB\u5B83\u518D\u5199\uFF09`,
       `${bold("skill")}  skill install [--force] \xB7 remove \xB7 status \xB7 link\uFF08\u88C5\u8FDB ~/.agents/skills \u4E0E ~/.claude/skills\uFF1B\u8FD0\u884C\u65F6\u81EA\u52A8\u8865\u88C5/\u66F4\u65B0\u81EA\u5DF1\u88C5\u7684\u90A3\u4EFD\uFF0COKR_SKIP_SKILL=1 \u5173\u6389\uFF1Blink \u628A okr \u8F6F\u94FE\u5230 ~/.local/bin\uFF09`,
@@ -10003,6 +10589,27 @@ function dispatch() {
       break;
     case "velocity":
       cmdVelocity();
+      break;
+    case "brief":
+      cmdBrief();
+      break;
+    case "week":
+      cmdWeek();
+      break;
+    case "candidates":
+      cmdCandidates();
+      break;
+    case "changes":
+      cmdChanges();
+      break;
+    case "commits":
+      cmdCommits();
+      break;
+    case "apply":
+      cmdApply();
+      break;
+    case "report":
+      cmdReport();
       break;
     case "status":
       cmdStatus();

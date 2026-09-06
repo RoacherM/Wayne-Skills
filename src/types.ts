@@ -70,6 +70,7 @@ export interface Event {
   kind?: 'daily' | 'weekly'; // report
   dismissed?: boolean; // plan
   source?: string; // plan: file it came from
+  week?: string; // plan: the week the proposal was for
 }
 
 export type Stage = 'todo' | 'doing' | 'blocked' | 'review' | 'done';

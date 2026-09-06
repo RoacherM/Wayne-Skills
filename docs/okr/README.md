@@ -61,6 +61,13 @@ okr show o1     # 详情：燃起图、评估、子节点、事件
 okr show kr1.2 --spec   # 派工包 markdown，带可复制的 claim / log / submit 命令
 okr recent --days 7     # 最近事件
 okr velocity            # 近 4 周完成数与用时
+okr brief               # 会话开始先看：逾期 / 将到期 / 阻塞 / 停滞 / 待验收超时 / 已领取 / 上层落后 / 待确认提案
+okr week [--week W]     # 某周的计划（按 order）和遗留
+okr candidates [--dispatchable]   # 未完成任务和排序依据：截止、所属 KR 落后多少、依赖、遗留、spec 缺什么
+okr changes --since last-daily    # 上次日报以来写了什么（按记录时间算，补记的也在）
+okr commits --since last-weekly   # 登记仓库的 git log
+okr apply --from 2026-W36.plan.yaml --confirmed   # 落周计划（reports/ 下的提案文件）；--dismiss 否掉待处理提案
+okr report data --week 2026-W36   # 周报数据：各节点本周进度变化、完成的任务、事件计数、计划、brief
 okr protocol            # 打印 PROTOCOL.md，agent 先读它
 okr validate            # 数据、iCloud 冲突副本、git 健康
 okr migrate             # 旧 goals.yaml 迁到新模型

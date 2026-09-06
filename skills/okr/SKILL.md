@@ -16,7 +16,7 @@ okr protocol
 ## 本 skill 固定的事
 
 - 写入一律带 `--by <自己的名字> --json`（Claude Code 用 `claude`，Codex 用 `codex`，Gemini 用 `gemini`），读也 `--json`，自己解析后用中文一句话回用户。
-- 会话里第一次碰 okr 先按协议 §2 跑 brief（未实现前 `okr tree --json` 过滤 task 的 `flags`，`okr status --json` 看根节点 `health`，`okr recent --days 7 --json` 看动静），有事才提一句。
+- 会话里第一次碰 okr 先按协议 §2 跑 `okr brief --json`，`empty` 为 true 就不提，否则挑要紧的一句。
 - 每次写之前 `okr recent --node <id> --days 7 --json` 查重，语义重复不写。
 - 指代歧义（退出码 2）列候选让用户选；需要 `--confirmed` 的事先说清楚再等用户点头；被守卫拒绝（退出码 3）按协议 §10 处理，不自作主张 `--force`。
 - 数值（`--value`、`--hours`）只写用户口述的。
@@ -29,7 +29,7 @@ okr protocol
 | 验收执行 agent 的 PR | §4 §9 | `okr done` / `okr reject "意见"` |
 | 问进度、看板、哪些落后 | §2 | `okr tree --json`（task 的 `flags` / `stage` 只在这里和 `show` 里）、`okr status --json`（根节点）、`okr show <id> --json` |
 | 评估某个目标到了几成 | §5 | 默认信推导；不同意才 `okr assess --value --reason` |
-| 建目标、拆任务、做周计划、今日清单 | §6 §7 | 先展示提案 → 用户点头 → `plan.yaml` + `okr apply --confirmed`（未实现前逐条 `add` / `edit`） |
+| 建目标、拆任务、做周计划、今日清单 | §6 §7 | `okr week --json` + `okr candidates --json` 取数 → 展示提案 → 用户点头 → 写 `reports/<周>.plan.yaml` + `okr apply --from … --confirmed`；否掉就 `okr apply --dismiss` |
 | 改结构：加、改、挪、删、取消、冻结 | §7 | `okr add/edit/move/rm … --confirmed` |
 | 「这个仓库对应哪个 KR」、汇总仓库进度 | §8 | `okr repo add <path> --node <id>`，读仓库 `.okr.yaml` |
 | 派任务给执行 agent | §9 | `okr show <id> --spec`，整段贴给执行 agent |

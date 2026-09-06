@@ -29,15 +29,12 @@ DESIGN.md §8 分五步开发，目前到第 2 步。协议按最终形态写，
 | `log` `done` `block` `claim` `submit` `reject` `assess` `check` `recent` | 可用 | |
 | `status` `velocity` `protocol` | 可用 | |
 | `tui` | 可用，仅限终端 | 需要 TTY，agent 环境下退出 1，agent 用 `status` / `tree` |
-| `brief` | 待实现（§8 步 3） | `okr tree --json` 过滤 task 的 `flags`（overdue / due-soon / blocked / stale / review-stale / claimed / carry-over）；`okr status --json` 只有根节点，看 `health`；`okr recent --days 7 --json` 看动静 |
-| `week` | 待实现 | `okr tree --json`，过滤 `planned` 或 `carryOver` 为 true 的 task，按 `order` 排（没设 `order` 的没有这个字段，排最后） |
-| `candidates [--dispatchable]` | 待实现 | `okr tree --json`，过滤 task 的 `stage != done`，`dispatchable` 字段已有 |
-| `apply --from plan.yaml` / `--dismiss` | 待实现 | 用户确认提案后逐条 `okr add … --week … --confirmed` 与 `okr edit <id> --week … --order N` 落地 |
-| `commits` `changes` `report` `deliver notes` | 待实现（§8 步 3–4） | 需要提交列表时 agent 自己 `git -C <repo> log --since` |
+| `brief` `week [--week W]` `candidates [--dispatchable]` `changes --since` `commits [--since] [--limit]` `apply --from <plan.yaml> --confirmed` / `apply --dismiss` `report data [--week W]` | 可用 | |
+| `report write` `deliver notes` | 待实现（§8 步 4） | 日报 / 周报由 agent 用 `okr changes --json` / `okr report data --json` 的数据写成 markdown 放到 `reports/`，写完记一条 report 事件的机制随步 4 一起来 |
 
 ## 2. 会话开始
 
-先跑 `okr brief --json`（未实现前按上表替代）。有事才提一句，没事不说：到期与将到期、阻塞、停滞、待验收超过 3 天、已被执行 agent 领取的任务、待确认的周计划提案。
+先跑 `okr brief --json`。`empty` 为 true 就一个字不提；否则按 `overdue` / `dueSoon` / `blocked` / `stale` / `reviewStale` / `claimed` / `behind`（落后或闲置的目标 / KR / 里程碑）/ `proposals`（待确认提案）挑要紧的说。有事才提一句，没事不说：到期与将到期、阻塞、停滞、待验收超过 3 天、已被执行 agent 领取的任务、待确认的周计划提案。
 
 有待确认提案（`week --json` 的 `proposal` 为 `pending`）：提醒用户确认，用户点头就 `apply --from <file> --confirmed`，否掉就 `apply --dismiss`。
 
@@ -80,7 +77,9 @@ DESIGN.md §8 分五步开发，目前到第 2 步。协议按最终形态写，
 
 **怎么拆**：先在对话里展示提案（任务名、优先级、截止、所属、一句为什么），用户确认后再落盘。当天的步骤只在对话里说，不写进 okr。
 
-**落盘方式**：写 `reports/<周>.plan.yaml`（周报提案）或 `reports/<周>.plan-2.yaml`、`plan-3.yaml`（中途拆解，不覆盖周报提案），然后 `okr apply --from <file> --confirmed`。`apply` 未实现前用逐条 add / edit 落地（见 §1 表）。
+**取数**：`okr week --json` 看本周已排（`planned`，按 `order`）和遗留（`carryOver`：上周及更早排了没完成的）；`okr candidates --json` 列全部未完成任务和排序依据：`priority`、`deadline` / `daysLeft`、`weight`、所属 KR 的落后程度（`upper.gap` = 进度 − 时间，负得越多越急）、依赖（`depsOpen`、`dependents`）、`carryOver`、`specMissing`、`dispatchable`。CLI 只给事实，`--dispatchable` 只是过滤；排序是 agent 的事：遗留和逾期先处理，落后 KR 下的任务其次，再按优先级和截止，一周别超过用户说的容量（`okr velocity --json` 是近几周的完成数）。
+
+**落盘方式**：写 `reports/<周>.plan.yaml`（周报提案）或 `reports/<周>.plan-2.yaml`、`plan-3.yaml`（中途拆解，不覆盖周报提案），然后 `okr apply --from <file> --confirmed`（`--from` 给文件名时到 `reports/` 下找）。apply 的规则：`plan` 里的任务全部设成这周，`order` 按列表顺序接在「本周已排、这次没提到」的任务后面，所以重复 apply 不会打乱没提到的任务；`drop` 清掉 `week` / `order`；遗留任务必须出现在 `plan` 或 `drop` 里，否则退出码 3、JSON 里 `carryOver` 列出漏掉的；spec 不全只警告不拒绝；`new` 里省略 id 就自动生成，`new:N` 可以出现在 `plan` / `drop` / 别的 `new` 项的 `parent` / `deps` 里。用户否掉提案就 `okr apply --dismiss`（当周所有待处理的）或 `okr apply --dismiss --from <file>`。
 
 ```yaml
 week: 2026-W36
@@ -119,7 +118,7 @@ node: kr1          # 这个仓库的工作默认记到哪个节点
 ```
 
   CLI 不读这个文件，agent 读。在仓库里收到「记一下进度」但没点名节点时，先看它。
-- 从 git 提取进度：CLI（`okr commits`，待实现）只列提交，归纳是 agent 的事，归纳结果写成一条 `log`，不是一条提交一条事件。时机：用户完成一个大版本让 agent 更新，或用户让 agent 汇总某个仓库。
+- 从 git 提取进度：CLI（`okr commits --json`，按登记的仓库列 `git log`，缺省自上次周报起，`--since <日期>` / `--node <id>` / `--limit N` 收窄）只列提交，归纳是 agent 的事，归纳结果写成一条 `log`，不是一条提交一条事件。时机：用户完成一个大版本让 agent 更新，或用户让 agent 汇总某个仓库。
 
 ## 9. 派工与执行 agent
 
