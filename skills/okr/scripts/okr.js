@@ -10219,7 +10219,8 @@ function mdReportList(entries, st) {
   const out = ["# \u62A5\u544A", ""];
   if (st) out.push(`\u65E5\u62A5 ${st.daily.today ? "\u4ECA\u5929\u5DF2\u5199" : st.daily.last ? `\u4E0A\u6B21 ${dayOf(st.daily.last.ts)}` : "\u8FD8\u6CA1\u5199\u8FC7"} \xB7 \u5468\u62A5 ${st.weekly.thisWeek ? "\u672C\u5468\u5DF2\u5199" : st.weekly.last ? `\u4E0A\u6B21 ${st.weekly.last.week ?? dayOf(st.weekly.last.ts)}` : "\u8FD8\u6CA1\u5199\u8FC7"}`, "");
   const KIND = { weekly: "\u5468\u62A5", daily: "\u65E5\u62A5", plan: "\u63D0\u6848", other: "\u6587\u4EF6" };
-  out.push(...table(["\u7C7B\u578B", "\u671F\u95F4", "\u4FEE\u6539", "\u6587\u4EF6"], entries.map((e) => [KIND[e.kind], e.label, e.modified, e.file])));
+  if (!entries.length) out.push("\u8FD8\u6CA1\u6709\u62A5\u544A\u3002");
+  else out.push(...table(["\u7C7B\u578B", "\u671F\u95F4", "\u4FEE\u6539", "\u6587\u4EF6"], entries.map((e) => [KIND[e.kind], e.label, e.modified, e.file])));
   return out;
 }
 

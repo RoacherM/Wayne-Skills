@@ -155,6 +155,7 @@ export function mdReportList(entries: readonly ReportEntry[], st: ReportStatus |
   const out = ['# 报告', ''];
   if (st) out.push(`日报 ${st.daily.today ? '今天已写' : st.daily.last ? `上次 ${dayOf(st.daily.last.ts)}` : '还没写过'} · 周报 ${st.weekly.thisWeek ? '本周已写' : st.weekly.last ? `上次 ${st.weekly.last.week ?? dayOf(st.weekly.last.ts)}` : '还没写过'}`, '');
   const KIND: Record<ReportEntry['kind'], string> = { weekly: '周报', daily: '日报', plan: '提案', other: '文件' };
-  out.push(...table(['类型', '期间', '修改', '文件'], entries.map((e) => [KIND[e.kind], e.label, e.modified, e.file])));
+  if (!entries.length) out.push('还没有报告。');
+  else out.push(...table(['类型', '期间', '修改', '文件'], entries.map((e) => [KIND[e.kind], e.label, e.modified, e.file])));
   return out;
 }
