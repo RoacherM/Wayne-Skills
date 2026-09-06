@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { weekLabel, weekMonday, parseTs, daysBetween, sortEvents } from '../src/dates.ts';
 import { project, stageOf, parseCadence, newId, takenIds, velocity, matchNode } from '../src/project.ts';
 import { validateData } from '../src/validate.ts';
-import { DEMO_EVENTS, DEMO_NODES, DEMO_TODAY } from '../src/demo.ts';
+import { DEMO_EVENTS, DEMO_NODES, DEMO_TODAY } from './fixture.ts';
 import type { Event, Node } from '../src/types.ts';
 
 const T = (d: string, h = 10) => `${d}T${String(h).padStart(2, '0')}:00:00+08:00`;

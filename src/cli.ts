@@ -6,7 +6,6 @@ import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
 import { AMBER, bold, color, dim, GRAY, GREEN, HEALTH, RED, STAGE_SYM, strip } from './ansi.ts';
 import { addDays, dayOf, daysBetween, isValidDate, isValidWeek, nowIso, parseTs, sortEvents, todayIso, tsMs, weekLabel, weekMonday } from './dates.ts';
-import { DEMO_EVENTS, DEMO_NODES, DEMO_TODAY } from './demo.ts';
 import { MigrateError, migrate } from './migrate.ts';
 import { applyPlan, brief, candidates, changes, PlanError, proposalFiles, repoCommits, reportData, resolveSince, weekView } from './plan.ts';
 import type { TaskFacts } from './plan.ts';
@@ -66,7 +65,6 @@ function parseArgs(argv: string[]): Args {
 const args = parseArgs(process.argv.slice(2));
 const cmd = args._[0] ?? '';
 const json = args.flags.json === true;
-const demo = args.flags.demo === true;
 // DESIGN §7: ANSI on a terminal, 80-column plain text when piped (an agent pasting into a conversation), markdown on --md.
 const fmt = resolveFormat({ md: args.flags.md === true, plain: args.flags.plain === true, ansi: args.flags.ansi === true, isTTY: !!process.stdout.isTTY, noColor: !!process.env.NO_COLOR });
 const widthFlag = typeof args.flags.width === 'string' && /^\d+$/.test(args.flags.width) ? Math.max(40, +args.flags.width) : null;
@@ -88,7 +86,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const PKG_VERSION: string = typeof __OKR_VERSION__ === 'string' ? __OKR_VERSION__ : JSON.parse(readFileSync(resolve(HERE, '..', 'package.json'), 'utf8')).version;
 
 const KNOWN_FLAGS = new Set([
-  'json', 'demo', 'today', 'by', 'session', 'confirmed', 'force', 'at', 'link', 'hours', 'body', 'repo', 'commit',
+  'json', 'today', 'by', 'session', 'confirmed', 'force', 'at', 'link', 'hours', 'body', 'repo', 'commit',
   'value', 'node', 'days', 'weeks', 'all', 'spec', 'merge-events', 'kind', 'name', 'area', 'parent', 'start', 'end',
   'weight', 'status', 'metric', 'unit', 'from', 'to', 'cadence', 'habit', 'priority', 'deadline', 'dep', 'deps',
   'week', 'order', 'goal', 'accept', 'verify', 'reason', 'limit', 'help', 'version', 'dir', 'since', 'dismiss', 'dispatchable',
@@ -118,7 +116,7 @@ const num = (k: string): number | undefined => {
 
 // A bad --today is reported from dispatch(), where fail() is inside the top-level catch; until then fall back to the real day.
 const todayFlag = str('today');
-const today = todayFlag !== undefined && isValidDate(todayFlag) ? todayFlag : demo ? DEMO_TODAY : todayIso();
+const today = todayFlag !== undefined && isValidDate(todayFlag) ? todayFlag : todayIso();
 const by = str('by') ?? process.env.OKR_BY;
 const session = str('session');
 const confirmed = flag('confirmed');
@@ -150,14 +148,12 @@ function jsonReplacer(_k: string, v: unknown): unknown {
 }
 
 function load(): { nodes: Node[]; events: Event[] } {
-  if (demo) return { nodes: DEMO_NODES, events: DEMO_EVENTS };
   return { nodes: store.loadNodes(), events: store.loadEvents() };
 }
 
 function requireData(): void {
-  if (demo) return;
   if (store.hasOldLayout()) fail(`发现旧版 goals.yaml。先运行 ${bold('okr migrate')} 迁到新模型。`);
-  if (!store.exists()) fail(`还没有初始化。先运行 ${bold('okr init')}，或者用 ${bold('okr tui --demo')} 看示例。`);
+  if (!store.exists()) fail(`还没有初始化。先运行 ${bold('okr init')}。`);
 }
 
 function buildTree(): Tree {
@@ -177,9 +173,8 @@ function pickNode(q: string | undefined, nodes: Node[], usage: string): Node {
   throw new CliExit(2);
 }
 
-/** Every write: lock, reload inside the lock, run, commit. Never writes demo data. */
+/** Every write: lock, reload inside the lock, run, commit. */
 function preWrite(): void {
-  if (demo) fail('--demo 是只读的');
   if (str('today') !== undefined) fail('--today 只影响读，写入命令不接受', 1);
   requireData();
   // Event arguments are checked before the lock so a bad --at / --hours cannot fail after nodes.yaml is already on disk.
@@ -607,11 +602,6 @@ function cmdRepo(): void {
 }
 
 function cmdValidate(): void {
-  if (demo) {
-    const r = validateData(DEMO_NODES, DEMO_EVENTS);
-    printReport(r);
-    return;
-  }
   requireData();
   let merged: MergeResult[] = [];
   if (flag('merge-events')) {
@@ -654,7 +644,6 @@ function printReport(r: { errors: string[]; warnings: string[]; merged?: MergeRe
 }
 
 function cmdMigrate(): void {
-  if (demo) fail('--demo 是只读的');
   try {
     store.withLock(() => {
       const r = migrate();
@@ -1090,7 +1079,6 @@ function cmdJob(): void {
   if (process.platform !== 'darwin') fail('okr job 用 launchd，只在 macOS 上可用');
   if (sub === 'remove') return cmdJobRemove();
   if (sub !== 'install') fail(usage);
-  if (demo) fail('--demo 是只读的');
   requireData();
   const daily = parseTime(str('daily') ?? '11:00');
   const weekly = parseTime(str('weekly') ?? '10:00');
@@ -1285,7 +1273,7 @@ function cmdJobRun(): void {
 /** `report list`: every report / proposal / daily body on disk, newest first, with today's and this week's status. */
 function cmdReportList(): void {
   requireData();
-  const entries = demo ? [] : listReports(store.REPORTS, store.LOGS);
+  const entries = listReports(store.REPORTS, store.LOGS);
   const { events } = load();
   const t = buildTree();
   const st = reportStatus(events, today, t.week);
@@ -1437,7 +1425,7 @@ function specMissing(n: Node): string[] {
 function cmdTui(): void {
   requireData();
   if (!process.stdout.isTTY || !process.stdin.isTTY) fail('tui 需要终端。非交互环境用 okr status / okr tree。');
-  void runTui({ load, today, readOnly: demo, reportsDir: demo ? undefined : store.REPORTS, logsDir: demo ? undefined : store.LOGS });
+  void runTui({ load, today, reportsDir: store.REPORTS, logsDir: store.LOGS });
 }
 
 /** `okr protocol`: print PROTOCOL.md from the installed package so agents never need to know where the repo lives. */
@@ -1513,7 +1501,7 @@ function cmdHelp(): void {
       `${bold('协议')}   protocol（打印 PROTOCOL.md，agent 先读它再写）`,
       `${bold('skill')}  skill install [--force] · remove · status · link（装进 ~/.agents/skills 与 ~/.claude/skills；运行时自动补装/更新自己装的那份，OKR_SKIP_SKILL=1 关掉；link 把 okr 软链到 ~/.local/bin）`,
       '',
-      `${bold('通用')}   --json  --today YYYY-MM-DD  --at <时间>  --demo  --by <agent>  --session <id>  --confirmed  --force`,
+      `${bold('通用')}   --json  --today YYYY-MM-DD  --at <时间>  --by <agent>  --session <id>  --confirmed  --force`,
       `${bold('输出')}   终端 ANSI；管道 / --plain 80 列纯文本（--width N 改宽）；--md markdown（status tree show week velocity recent changes report list）；--ansi 强制颜色`,
       `${bold('退出码')} 0 成功 · 1 错误 · 2 指代歧义 · 3 守卫拒绝/validate 失败 · 4 锁超时`,
       '',
@@ -1542,7 +1530,7 @@ function dispatch(): void {
 if (flag('help')) return cmdHelp();
 if (flag('version')) { console.log(PKG_VERSION); return; }
 checkArgs();
-if (cmd !== 'skill' && cmd !== 'demo') autoSkill();
+if (cmd !== 'skill') autoSkill();
 switch (cmd) {
   case 'init': cmdInit(); break;
   case 'add': cmdAdd(); break;
@@ -1577,10 +1565,6 @@ switch (cmd) {
   case 'protocol': cmdProtocol(); break;
   case 'skill': cmdSkill(); break;
   case 'tui': case '': cmdTui(); break;
-  case 'demo':
-    if (!process.stdout.isTTY || !process.stdin.isTTY) fail('tui 需要终端。非交互环境用 okr status / okr tree。');
-    void runTui({ load: () => ({ nodes: DEMO_NODES, events: DEMO_EVENTS }), today: DEMO_TODAY, readOnly: true });
-    break;
   case 'help': case '-h': cmdHelp(); break;
   case 'version': case '-v': console.log(PKG_VERSION); break;
   default:

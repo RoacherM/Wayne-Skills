@@ -19,8 +19,7 @@ import { renderWeek, weekNodes } from './views/week.ts';
 export interface TuiSource {
   load: () => { nodes: Node[]; events: Event[] };
   today: string;
-  readOnly?: boolean;
-  reportsDir?: string; // reports/ and logs/ for the week and report pages; absent in demo mode
+  reportsDir?: string; // reports/ and logs/ for the week and report pages
   logsDir?: string;
 }
 
@@ -106,7 +105,7 @@ export function runTui(src: TuiSource): Promise<void> {
       const cur = doc ? ` ${t.label} › ${doc.entry.file} ` : detail && list[sel] ? ` ${t.label} › ${list[sel].node.id} ` : ` ${t.label} `;
       return inverse(bold(cur));
     }).join(' ');
-    const info = [`${tree.all.length} 节点`, tree.week, `${dim('today')} ${src.today}`, src.readOnly ? dim('示例数据') : '']
+    const info = [`${tree.all.length} 节点`, tree.week, `${dim('today')} ${src.today}`]
       .filter(Boolean)
       .join(dim(' · '));
     return ' ' + left + ' '.repeat(Math.max(1, cols - width(left) - width(info) - 2)) + info + ' ';

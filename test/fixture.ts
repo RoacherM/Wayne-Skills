@@ -1,4 +1,4 @@
-import type { Event, Node } from './types.ts';
+import type { Event, Node } from '../src/types.ts';
 
 export const DEMO_TODAY = '2026-09-03';
 

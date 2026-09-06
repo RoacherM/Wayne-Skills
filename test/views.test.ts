@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { strip } from '../src/ansi.ts';
-import { DEMO_EVENTS, DEMO_NODES, DEMO_TODAY } from '../src/demo.ts';
+import { DEMO_EVENTS, DEMO_NODES, DEMO_TODAY } from './fixture.ts';
 import { weekView } from '../src/plan.ts';
 import { project, velocity } from '../src/project.ts';
 import { paint, resolveFormat } from '../src/render.ts';

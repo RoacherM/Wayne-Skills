@@ -28,7 +28,7 @@ node ~/.agents/skills/okr/scripts/okr.js skill link   # 软链到 ~/.local/bin/o
 目标与任务追踪，终端里看，agent 也能读写。事件进，视图出。用法见 [`docs/okr/README.md`](docs/okr/README.md)，设计见 [`docs/okr/DESIGN.md`](docs/okr/DESIGN.md)，agent 读写规则见 [`docs/okr/PROTOCOL.md`](docs/okr/PROTOCOL.md)（装好后 `okr protocol` 直接打印）。
 
 ```bash
-okr tui --demo          # 先用示例数据看看
+okr init && okr         # 初始化 ~/.okr，打开 TUI
 okr status              # 看板（管道里是纯文本，--md 出 markdown）
 okr week                # 本周计划 / 遗留 / 吞吐
 okr brief               # 今天该注意什么

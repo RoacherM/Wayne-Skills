@@ -15,7 +15,7 @@
 ```bash
 npx -y --no-audit skills add RoacherM/Wayne-Skills -s okr -g -y -a claude-code -a codex   # 装 skill，CLI 打包在 skill 的 scripts/okr.js 里（Node ≥ 20），-a 选 agent
 node ~/.agents/skills/okr/scripts/okr.js skill link                                        # 想在终端敲 okr：软链到 ~/.local/bin
-okr tui --demo                                                                             # 先用示例数据看看
+okr init && okr                                                                            # 初始化 ~/.okr，打开 TUI
 ```
 
 另一条路是 `npm install -g github:RoacherM/Wayne-Skills`（`okr` 进 PATH，更新重跑同一条）：任意 `okr` 命令运行时会检查 skill，没有就把 `skills/okr` 复制到 `~/.agents/skills/okr`（Codex / Copilot / OpenCode 直接读），并建软链 `~/.claude/skills/okr`（Claude Code）；是自己装的拷贝（带 `.wayne-skills` 戳记）且包里的 skill 变了就更新；软链或别人装的目录不碰。手动：`okr skill install [--force]` / `remove` / `status`；`OKR_SKIP_SKILL=1` 关掉自动安装（不用 npm postinstall 是因为 npm 11 会把带安装脚本的 git 全局包装成指向临时 clone 的软链）。别的 agent 就在 skills CLI 那条命令里多加 `-a gemini-cli` 之类（`--no-audit`：首次拉包时 npm audit 在某些网络下会静默挂住）。agent 用 `okr protocol` 读协议，不依赖仓库路径。
@@ -26,7 +26,7 @@ okr tui --demo                                                                  
 git clone https://github.com/RoacherM/Wayne-Skills ~/Desktop/Projects/sides/wayne-skills && cd ~/Desktop/Projects/sides/wayne-skills && npm install && npm link   # okr 指向源码（Node ≥ 23.6）；覆盖 npm install -g 装的那份，回发布版重跑 npm install -g。改了 src/ 或 PROTOCOL.md 后 npm run bundle 重新打包 skills/okr/scripts/okr.js
 rm -rf ~/.agents/skills/okr && ln -s ~/Desktop/Projects/sides/wayne-skills/skills/okr ~/.agents/skills/okr && okr skill install   # skill 用软链，改 SKILL.md 即生效；install 只补 Claude Code 软链
 npm test && npm run typecheck
-okr tree --demo && okr show kr1.2 --spec --demo   # 派工包长什么样
+OKR_DIR=/tmp/okr-play okr init && OKR_DIR=/tmp/okr-play okr add "试一个目标" --kind objective --confirmed   # 想拿一份临时数据玩：换个目录，不碰 ~/.okr
 ```
 
 ## 用法
@@ -81,7 +81,7 @@ okr migrate             # 旧 goals.yaml 迁到新模型
 
 节点可以用 id 或名字关键词指代。匹配到多个时列出候选并退出码 2，不猜；没有匹配也是退出码 2（`--json` 里 `candidates` 为空）。
 
-通用参数：`--json`（读写都支持，错误也是 JSON）、`--today 2026-03-15`（只影响读，写命令传了直接拒绝）、`--at`（补记时间，给日期就是那一天，晚于今天或晚于当前 5 分钟以上的时间拒绝）、`--by`（缺省 `OKR_BY`）、`--session`、`--confirmed`、`--force`、`--demo`。时间戳一律要求本地时区显式偏移（如 `+08:00`），别的格式会被自动规整。`OKR_DIR=…` 换数据目录。不认识的 `--flag` 直接拒绝。人类输出三种：终端里 ANSI；管道、`NO_COLOR` 或 `--plain` 是 80 列纯文本（`--width N` 改宽）；`--md` 是 markdown（status / tree / show / week / velocity / recent / changes / report list），图表放在代码块里；`--ansi` 强制颜色。冻结 / 取消的节点（含继承自祖先）默认拒绝事件类写入（log / done / claim 等），`--force` 放行；add / edit / move 不受影响。退出码：0 成功，1 错误，2 指代歧义，3 守卫拒绝或 validate 失败，4 锁超时。
+通用参数：`--json`（读写都支持，错误也是 JSON）、`--today 2026-03-15`（只影响读，写命令传了直接拒绝）、`--at`（补记时间，给日期就是那一天，晚于今天或晚于当前 5 分钟以上的时间拒绝）、`--by`（缺省 `OKR_BY`）、`--session`、`--confirmed`、`--force`。时间戳一律要求本地时区显式偏移（如 `+08:00`），别的格式会被自动规整。`OKR_DIR=…` 换数据目录。不认识的 `--flag` 直接拒绝。人类输出三种：终端里 ANSI；管道、`NO_COLOR` 或 `--plain` 是 80 列纯文本（`--width N` 改宽）；`--md` 是 markdown（status / tree / show / week / velocity / recent / changes / report list），图表放在代码块里；`--ansi` 强制颜色。冻结 / 取消的节点（含继承自祖先）默认拒绝事件类写入（log / done / claim 等），`--force` 放行；add / edit / move 不受影响。退出码：0 成功，1 错误，2 指代歧义，3 守卫拒绝或 validate 失败，4 锁超时。
 
 TUI 页签：看板、树（目标带本周变化 ▲▼）、本周（计划 / 遗留 / 提案 / 吞吐）、报告（周报 / 周计划 / 日报，⏎ 阅读，阅读时 `←→` 翻上一份 / 下一份）、事件。按键：`←→` 或 `Tab` 切页（也可按 `1`–`5`），`↑↓` 选节点或滚动，`PgUp/PgDn` 翻页，`⏎` 看详情或打开报告，`esc` 返回，`a` 树页显示已完成，`/` 筛选（`esc` 清除），`r` 重新读取，`q` 退出。
 
@@ -96,7 +96,6 @@ src/
   project.ts    从节点树和事件流推导阶段、进度、评估、健康度、标签、派工条件
   validate.ts   数据校验与目录校验（iCloud 副本、git fsck）
   migrate.ts    旧 goals.yaml 迁移
-  demo.ts       示例数据
   render.ts     输出格式判定（ansi / plain / md）与去色
   views/        common · tree · status 看板 · detail 详情（含依赖链）· deps · week 本周 · velocity 吞吐 · reports 报告列表与阅读 · habit 热力图 · events 事件流 · md 各视图的 markdown
   tui.ts        全屏页签式交互

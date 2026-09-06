@@ -106,7 +106,7 @@ agent 的 `assess` 是覆盖：视图显示 assess 值，并记录当时的 `der
 
 ## 3. CLI 命令
 
-通用参数：`--json`（读写都支持，错误也以 JSON 输出到 stdout）、`--today`（只影响读，写命令传 `--today` 直接拒绝）、`--at <ts>`（写命令补记 `ts`，`rec` 仍为写入时间；`--at` 给日期时，今天取写入时刻、更早的一天取当天中午、更晚的一天拒绝；给完整时间时晚于写入时间超过 5 分钟拒绝）、`--demo`、`--by <agent>`（缺省 `OKR_BY`）、`--session <id>`、`--confirmed`、`--force`。时间戳统一要求本地时区显式数字偏移（如 `2026-09-03T21:00:00+08:00`），带 `Z` 或外地偏移的输入在写入前会被规整成本地偏移；不认识的 `--flag` 一律拒绝（退出码 1）。非 task 节点的 `--json` 输出省略 `stage` / `planned` / `carryOver` / `dispatchable` / `claimed` / `blocked` 这些只对 task 有意义的字段。
+通用参数：`--json`（读写都支持，错误也以 JSON 输出到 stdout）、`--today`（只影响读，写命令传 `--today` 直接拒绝）、`--at <ts>`（写命令补记 `ts`，`rec` 仍为写入时间；`--at` 给日期时，今天取写入时刻、更早的一天取当天中午、更晚的一天拒绝；给完整时间时晚于写入时间超过 5 分钟拒绝）、`--by <agent>`（缺省 `OKR_BY`）、`--session <id>`、`--confirmed`、`--force`。时间戳统一要求本地时区显式数字偏移（如 `2026-09-03T21:00:00+08:00`），带 `Z` 或外地偏移的输入在写入前会被规整成本地偏移；不认识的 `--flag` 一律拒绝（退出码 1）。非 task 节点的 `--json` 输出省略 `stage` / `planned` / `carryOver` / `dispatchable` / `claimed` / `blocked` 这些只对 task 有意义的字段。
 
 退出码：0 成功；1 一般错误；2 目标指代歧义（输出候选）；3 守卫拒绝或 validate 失败；4 锁超时。
 
