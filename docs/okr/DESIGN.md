@@ -195,6 +195,8 @@ derive → layout → paint。同一份 layout 三种输出：ANSI（TUI）、80
 4. 定时任务：launchd 日报（deliver notes）与周报，幂等与授权步骤。
 5. TUI：树看板、本周页、报告页；渲染层三种输出。
 
+五步已全部完成（2026-09-06）。渲染层的落地：ANSI 视图在 `src/views/*`，纯文本 = 去色后的同一份 ANSI（80 列，`--width` 可改），markdown 由 `src/views/md.ts` 逐视图单独画（表格 / 嵌套列表，燃起图与热力图放代码块）；格式判定在 `src/render.ts`（`--md` > `--ansi` > 管道 / `NO_COLOR` / `--plain` 为纯文本）。
+
 ## 9. iCloud 缓解
 
 `.git` 留在 iCloud 是既定决定。低成本保护：

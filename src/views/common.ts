@@ -1,4 +1,6 @@
-import { color, dim, FLAG_LABEL, goalColor, RED, AMBER, GRAY } from '../ansi.ts';
+import { color, dim, FLAG_LABEL, goalColor, GREEN, RED, AMBER, GRAY } from '../ansi.ts';
+import { addDays, weekStart } from '../dates.ts';
+import { progressAt } from '../project.ts';
 import type { Tree } from '../project.ts';
 import type { Flag, NodeState } from '../types.ts';
 
@@ -25,4 +27,22 @@ export function flagTags(flags: Flag[]): string {
 
 export function isInactive(s: NodeState): boolean {
   return s.effective !== 'active';
+}
+
+/** Progress change since Monday; null for tasks / habits or when there is nothing to compare. */
+export function weekDelta(t: Tree, s: NodeState): number | null {
+  if (s.node.kind === 'task' || s.node.kind === 'habit') return null;
+  const before = progressAt(s, addDays(weekStart(t.today), -1));
+  if (before === null || s.progress === null) return null;
+  const d = s.progress - before;
+  return Math.abs(d) < 0.005 ? null : d;
+}
+
+export function deltaText(d: number | null): string {
+  return d === null ? '' : `${d > 0 ? '+' : ''}${Math.round(d * 100)}%`;
+}
+
+export function weekDeltaTag(t: Tree, s: NodeState): string {
+  const d = weekDelta(t, s);
+  return d === null ? '' : color(d > 0 ? GREEN : RED, `${d > 0 ? '▲' : '▼'}${deltaText(d)}`);
 }

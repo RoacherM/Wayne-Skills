@@ -4,8 +4,9 @@ import { clamp, progressAt } from '../project.ts';
 import type { Tree } from '../project.ts';
 import { KIND_LABEL, STAGE_EVENTS, STAGE_LABEL } from '../types.ts';
 import type { NodeState } from '../types.ts';
-import { flagTags, pct } from './common.ts';
+import { flagTags, pct, weekDeltaTag } from './common.ts';
 import { renderHabit } from './habit.ts';
+import { renderDeps } from './deps.ts';
 import { treeRow } from './tree.ts';
 
 export interface DetailOpts {
@@ -48,6 +49,8 @@ export function renderDetail(s: NodeState, o: DetailOpts): string[] {
   } else {
     facts.push(`推导 ${bold(pct(s.derived))}`);
     if (s.assess) facts.push(`评估 ${bold(pct(s.assess.value))}${s.assess.stale ? color(RED, ` 已过期 (${daysBetween(s.assess.ts, o.today)} 天前)`) : dim(` (${daysBetween(s.assess.ts, o.today)} 天前)`)}`);
+    const wd = o.tree ? weekDeltaTag(o.tree, s) : '';
+    if (wd) facts.push(`本周 ${wd}`);
     if (s.undecomposed) facts.push(`${s.undecomposed} 个未拆解`);
   }
   if (n.kind !== 'task') facts.push(healthTag(s.health));
@@ -67,7 +70,7 @@ export function renderDetail(s: NodeState, o: DetailOpts): string[] {
     out.push(...renderHabit(s, { today: o.today, weeks: Math.min(26, Math.floor((o.width - 8) / 2)), colorIdx: o.colorIdx }));
     out.push(rule(o.width));
   } else if (n.kind === 'task') {
-    out.push(...specBlock(s, o.tree));
+    out.push(...specBlock(s, o.tree, o.width));
   } else if (n.start) {
     out.push(...burnup(s, { width: Math.min(o.width - 9, 72), height: 8, today: o.today, c }));
     out.push(rule(o.width));
@@ -104,7 +107,7 @@ function pathOf(s: NodeState): string {
   return ids.join(' › ');
 }
 
-function specBlock(s: NodeState, t?: Tree): string[] {
+function specBlock(s: NodeState, t?: Tree, W = 80): string[] {
   const n = s.node;
   const out: string[] = [];
   const sp = n.spec ?? {};
@@ -115,19 +118,16 @@ function specBlock(s: NodeState, t?: Tree): string[] {
   line('验证', sp.verify);
   if (sp.links?.length) sp.links.forEach((l, i) => out.push(` ${dim(pad(i ? '' : '链接', 6))} ${l}`));
   else line('链接', undefined);
-  if (n.deps?.length) {
-    const deps = n.deps.map((d) => {
-      const dep = t?.byId.get(d);
-      return dep ? (dep.stage === 'done' || dep.effective === 'canceled' ? dim(d) : color(RED, d)) : color(RED, `${d}?`);
-    });
-    out.push(` ${dim(pad('依赖', 6))} ${deps.join(' ')}`);
-  }
   out.push(` ${dim(pad('派工', 6))} ${s.dispatchable ? color(41, '可派工') : dim('不可派工')}`);
   out.push(rule(40));
+  if (t) {
+    const chain = renderDeps(t, s, W);
+    if (chain.length) out.push(...chain, rule(40));
+  } else if (n.deps?.length) out.push(` ${dim(pad('依赖', 6))} ${n.deps.join(' ')}`, rule(40));
   return out;
 }
 
-interface BurnOpts {
+export interface BurnOpts {
   width: number;
   height: number;
   today: string;
@@ -135,7 +135,7 @@ interface BurnOpts {
 }
 
 /** Burn-up: rows are % complete, columns are days. Dots are pace against the deadline, solid is what happened. */
-function burnup(s: NodeState, o: BurnOpts): string[] {
+export function burnup(s: NodeState, o: BurnOpts): string[] {
   const n = s.node;
   const start = n.start!;
   const end = n.end ?? addDays(o.today, 14);

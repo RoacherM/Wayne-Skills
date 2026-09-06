@@ -29,7 +29,8 @@ node ~/.agents/skills/okr/scripts/okr.js skill link   # 软链到 ~/.local/bin/o
 
 ```bash
 okr tui --demo          # 先用示例数据看看
-okr status              # 看板
+okr status              # 看板（管道里是纯文本，--md 出 markdown）
+okr week                # 本周计划 / 遗留 / 吞吐
 okr brief               # 今天该注意什么
 okr log kr1 "基线跑完" --value 80
 okr show kr1.2 --spec   # 派工包

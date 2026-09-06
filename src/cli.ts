@@ -4,7 +4,7 @@ import { homedir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
-import { AMBER, bold, color, dim, GRAY, GREEN, HEALTH, RED, STAGE_SYM } from './ansi.ts';
+import { AMBER, bold, color, dim, GRAY, GREEN, HEALTH, RED, STAGE_SYM, strip } from './ansi.ts';
 import { addDays, dayOf, daysBetween, isValidDate, isValidWeek, nowIso, parseTs, sortEvents, todayIso, tsMs, weekLabel, weekMonday } from './dates.ts';
 import { DEMO_EVENTS, DEMO_NODES, DEMO_TODAY } from './demo.ts';
 import { MigrateError, migrate } from './migrate.ts';
@@ -16,6 +16,7 @@ import { descendants, isAncestor, matchNode, newId, project, specComplete, taken
 import type { Tree } from './project.ts';
 import * as store from './store.ts';
 import { ensureSkill, installSkill, linkCli, removeSkill, skillPaths } from './skill.ts';
+import { paint, PLAIN_WIDTH, resolveFormat } from './render.ts';
 import { runTui } from './tui.ts';
 import { KIND_LABEL, STAGE_LABEL } from './types.ts';
 import type { Event, EventType, Node, NodeKind, NodeState, Priority, Spec } from './types.ts';
@@ -24,6 +25,10 @@ import type { MergeResult } from './validate.ts';
 import { flagTags, pct, rootIndex } from './views/common.ts';
 import { renderDetail } from './views/detail.ts';
 import { renderEvents } from './views/events.ts';
+import { mdDetail, mdEvents, mdReportList, mdStatus, mdTree, mdVelocity, mdWeek } from './views/md.ts';
+import { listReports, renderReportList } from './views/reports.ts';
+import { renderVelocity } from './views/velocity.ts';
+import { renderWeek, taskLine } from './views/week.ts';
 import { renderStatus } from './views/status.ts';
 import { renderTree } from './views/tree.ts';
 
@@ -62,7 +67,19 @@ const args = parseArgs(process.argv.slice(2));
 const cmd = args._[0] ?? '';
 const json = args.flags.json === true;
 const demo = args.flags.demo === true;
-const cols = process.stdout.columns || 100;
+// DESIGN §7: ANSI on a terminal, 80-column plain text when piped (an agent pasting into a conversation), markdown on --md.
+const fmt = resolveFormat({ md: args.flags.md === true, plain: args.flags.plain === true, ansi: args.flags.ansi === true, isTTY: !!process.stdout.isTTY, noColor: !!process.env.NO_COLOR });
+const widthFlag = typeof args.flags.width === 'string' && /^\d+$/.test(args.flags.width) ? Math.max(40, +args.flags.width) : null;
+const cols = widthFlag ?? (fmt === 'ansi' ? process.stdout.columns || 100 : PLAIN_WIDTH);
+if (fmt !== 'ansi' && !json) {
+  const plainify = (w: (...a: unknown[]) => void) => (...a: unknown[]) => w(...a.map((x) => (typeof x === 'string' ? strip(x).replace(/[ \t]+$/gm, '') : x)));
+  console.log = plainify(console.log.bind(console));
+  console.error = plainify(console.error.bind(console));
+}
+/** Human output: markdown lines when --md and a markdown paint exists, else the ANSI layout (stripped by the console patch when plain). */
+function show(ansi: () => readonly string[], md?: () => readonly string[]): void {
+  console.log(fmt === 'md' && md ? md().join('\n') : paint(ansi(), 'ansi'));
+}
 
 // scripts/build.mjs bakes these in; running from source falls back to the repo files.
 declare const __OKR_VERSION__: string | undefined;
@@ -76,6 +93,7 @@ const KNOWN_FLAGS = new Set([
   'weight', 'status', 'metric', 'unit', 'from', 'to', 'cadence', 'habit', 'priority', 'deadline', 'dep', 'deps',
   'week', 'order', 'goal', 'accept', 'verify', 'reason', 'limit', 'help', 'version', 'dir', 'since', 'dismiss', 'dispatchable',
   'stdin', 'title', 'folder', 'probe', 'dry-run', 'daily', 'weekly', 'weekday', 'agent', 'skip-probe',
+  'plain', 'md', 'ansi', 'width',
 ]);
 
 const str = (k: string): string | undefined => {
@@ -693,16 +711,13 @@ function cmdRecent(): void {
     events = events.filter((e) => e.node && ids.has(e.node));
   }
   events = sortEvents(events).reverse();
-  ok({ events, days, today }, () => console.log(renderEvents(t, { width: cols, events }).join('\n')));
+  ok({ events, days, today }, () => show(() => renderEvents(t, { width: cols, events }), () => mdEvents(t, events)));
 }
 
 function cmdVelocity(): void {
   const t = buildTree();
   const v = velocity(t, num('weeks') ?? 4);
-  ok({ weeks: v }, () => {
-    console.log(dim(' 周          完成  用时'));
-    for (const w of v) console.log(` ${w.week}   ${String(w.done).padStart(4)}  ${w.hours === null ? dim('—') : `${w.hours}h`}  ${dim(w.ids.join(' '))}`);
-  });
+  ok({ weeks: v }, () => show(() => renderVelocity(v, { width: cols }), () => mdVelocity(v)));
 }
 
 // ── commands: planning data ───────────────────────────
@@ -714,20 +729,6 @@ const weekFlag = (t: Tree): string => {
   return w;
 };
 
-function taskLine(f: TaskFacts, opts: { order?: boolean } = {}): string {
-  const st = STAGE_SYM[f.stage];
-  const bits = [
-    opts.order ? dim(f.order === null ? ' -' : String(f.order).padStart(2)) : '',
-    color(st.c, st.sym),
-    bold(f.id),
-    f.name,
-    f.priority ? dim(f.priority) : '',
-    f.deadline ? (f.daysLeft !== null && f.daysLeft < 0 ? color(RED, `~${f.deadline}`) : dim(`~${f.deadline}`)) : '',
-    flagTags(f.flags.filter((x) => x !== 'carry-over')),
-    f.claimed ? dim(`@${f.claimed.by}`) : '',
-  ].filter(Boolean);
-  return ' ' + bits.join('  ');
-}
 
 function cmdBrief(): void {
   const t = buildTree();
@@ -768,16 +769,7 @@ function cmdWeek(): void {
   const t = buildTree();
   const { events } = load();
   const w = weekView(t, events, store.REPORTS, weekFlag(t));
-  ok({ ...w, today }, () => {
-    const prop = w.proposal === 'none' ? '' : `  提案 ${w.proposal}${w.proposals.length > 1 ? ` (${w.proposals.length})` : ''}`;
-    console.log(`${bold(w.week)} ${dim(`${w.start.slice(5)} → ${w.end.slice(5)}`)}${w.current ? dim('  本周') : ''}${color(w.proposal === 'pending' ? AMBER : GRAY, prop)}`);
-    if (!w.planned.length) console.log(dim(' 这周还没排任务。okr candidates 看候选，提案写到 reports/' + w.week + '.plan.yaml 再 okr apply。'));
-    for (const f of w.planned) console.log(taskLine(f, { order: true }));
-    if (w.carryOver.length) {
-      console.log(color(AMBER, ` 遗留 (${w.carryOver.length})`) + dim('  上周及更早排的，未完成；apply 时必须进 plan 或 drop'));
-      for (const f of w.carryOver) console.log(taskLine(f) + dim(`  ${f.week}`));
-    }
-  });
+  ok({ ...w, today }, () => show(() => renderWeek(w, t, { width: cols }).lines, () => mdWeek(w, t)));
 }
 
 function cmdCandidates(): void {
@@ -817,7 +809,7 @@ function cmdChanges(): void {
   const rows = changes(events, s.since);
   ok({ since: s.since, spec: s.spec, anchor: s.anchor, events: rows, today }, () => {
     console.log(dim(s.since ? ` 自 ${s.since}${s.anchor ? `（上次 ${s.anchor.kind === 'daily' ? '日报' : '周报'}）` : ''} 起 ${rows.length} 条` : ` 没有${s.spec === 'last-daily' ? '日报' : '周报'}锚点，列出全部 ${rows.length} 条`));
-    if (rows.length) console.log(renderEvents(t, { width: cols, events: rows }).join('\n'));
+    if (rows.length) show(() => renderEvents(t, { width: cols, events: rows }), () => mdEvents(t, rows));
   });
 }
 
@@ -1290,11 +1282,22 @@ function cmdJobRun(): void {
   );
 }
 
+/** `report list`: every report / proposal / daily body on disk, newest first, with today's and this week's status. */
+function cmdReportList(): void {
+  requireData();
+  const entries = demo ? [] : listReports(store.REPORTS, store.LOGS);
+  const { events } = load();
+  const t = buildTree();
+  const st = reportStatus(events, today, t.week);
+  ok({ reports: entries, status: st }, () => show(() => renderReportList(entries, st, { width: cols }).lines, () => mdReportList(entries, st)));
+}
+
 function cmdReport(): void {
   const sub = args._[1];
   if (sub === 'write') return cmdReportWrite();
   if (sub === 'status') return cmdReportStatus();
-  if (sub !== 'data') fail('用法: okr report data [--week W] | report write --kind daily|weekly [--week W] --from <md>|--stdin [--force] | report status');
+  if (sub === 'list') return cmdReportList();
+  if (sub !== 'data') fail('用法: okr report data [--week W] | report write --kind daily|weekly [--week W] --from <md>|--stdin [--force] | report status | report list');
   const t = buildTree();
   const { events } = load();
   const r = reportData(t, events, store.REPORTS, weekFlag(t));
@@ -1341,12 +1344,12 @@ function nodeJson(s: NodeState): Record<string, unknown> {
 
 function cmdStatus(): void {
   const t = buildTree();
-  ok({ today, week: t.week, nodes: t.roots.map(nodeJson) }, () => console.log(renderStatus(t, { width: cols }).join('\n')));
+  ok({ today, week: t.week, nodes: t.roots.map(nodeJson) }, () => show(() => renderStatus(t, { width: cols }), () => mdStatus(t)));
 }
 
 function cmdTree(): void {
   const t = buildTree();
-  ok({ today, week: t.week, nodes: t.all.map(nodeJson) }, () => console.log(renderTree(t, { width: cols, showDone: flag('all') }).lines.join('\n')));
+  ok({ today, week: t.week, nodes: t.all.map(nodeJson) }, () => show(() => renderTree(t, { width: cols, showDone: flag('all') }).lines, () => mdTree(t, flag('all'))));
 }
 
 function cmdShow(): void {
@@ -1354,7 +1357,7 @@ function cmdShow(): void {
   const n = pickNode(args._[1], t.all.map((s) => s.node), '用法: okr show <id> [--spec]');
   const s = t.byId.get(n.id)!;
   if (flag('spec')) return showSpec(t, s);
-  ok({ node: nodeJson(s), events: s.events }, () => console.log(renderDetail(s, { width: cols, today, colorIdx: rootIndex(t, s), maxEvents: num('limit') ?? 12, tree: t }).join('\n')));
+  ok({ node: nodeJson(s), events: s.events }, () => show(() => renderDetail(s, { width: cols, today, colorIdx: rootIndex(t, s), maxEvents: num('limit') ?? 12, tree: t }), () => mdDetail(s, t, today, num('limit') ?? 12)));
 }
 
 /** The dispatch package: everything an executing agent needs, including the write-back commands. */
@@ -1434,7 +1437,7 @@ function specMissing(n: Node): string[] {
 function cmdTui(): void {
   requireData();
   if (!process.stdout.isTTY || !process.stdin.isTTY) fail('tui 需要终端。非交互环境用 okr status / okr tree。');
-  void runTui({ load, today, readOnly: demo });
+  void runTui({ load, today, readOnly: demo, reportsDir: demo ? undefined : store.REPORTS, logsDir: demo ? undefined : store.LOGS });
 }
 
 /** `okr protocol`: print PROTOCOL.md from the installed package so agents never need to know where the repo lives. */
@@ -1504,13 +1507,14 @@ function cmdHelp(): void {
       `${bold('记录')}   log · done · block · claim · submit --link · reject · assess --value --reason · check · recent [--node] [--days]`,
       `${bold('数据')}   brief · week [--week W] · candidates [--dispatchable] · changes [--since last-daily|last-weekly|<ts>] · commits [--since] [--limit] · velocity [--weeks] · report data [--week W]`,
       `${bold('计划')}   apply --from <plan.yaml> --confirmed（见 protocol §6）· apply --dismiss [--from <plan.yaml>]`,
-      `${bold('报告')}   report write --kind daily|weekly [--week W] --from <md>|--stdin · report status · deliver notes [--kind] --from <md>|--stdin [--title] · deliver notes --probe`,
+      `${bold('报告')}   report write --kind daily|weekly [--week W] --from <md>|--stdin · report status · report list · deliver notes [--kind] --from <md>|--stdin [--title] · deliver notes --probe`,
       `${bold('定时')}   job install [--daily 11:00] [--weekly 10:00] [--weekday mon] [--agent claude|codex|<路径>] · job remove · job status · job run daily|weekly [--dry-run]`,
       `${bold('视图')}   tui · status · tree · show`,
       `${bold('协议')}   protocol（打印 PROTOCOL.md，agent 先读它再写）`,
       `${bold('skill')}  skill install [--force] · remove · status · link（装进 ~/.agents/skills 与 ~/.claude/skills；运行时自动补装/更新自己装的那份，OKR_SKIP_SKILL=1 关掉；link 把 okr 软链到 ~/.local/bin）`,
       '',
       `${bold('通用')}   --json  --today YYYY-MM-DD  --at <时间>  --demo  --by <agent>  --session <id>  --confirmed  --force`,
+      `${bold('输出')}   终端 ANSI；管道 / --plain 80 列纯文本（--width N 改宽）；--md markdown（status tree show week velocity recent changes report list）；--ansi 强制颜色`,
       `${bold('退出码')} 0 成功 · 1 错误 · 2 指代歧义 · 3 守卫拒绝/validate 失败 · 4 锁超时`,
       '',
       dim(`数据目录 ${store.DIR}（OKR_DIR 可改）。协议 okr protocol；设计 github.com/RoacherM/Wayne-Skills/blob/main/docs/okr/DESIGN.md。`),

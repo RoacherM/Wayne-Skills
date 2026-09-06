@@ -54,12 +54,15 @@ okr move kr1.3 --to m1 --confirmed
 okr rm t9 --confirmed                         # 只删没事件（自身 add/edit 的 change 除外）、没子节点、没人依赖的节点，其余 edit --status canceled
 okr repo add ~/Projects/recsys --node kr1
 
-okr             # TUI：看板 / 树 / 事件，⏎ 钻进节点详情
+okr             # TUI：看板 / 树 / 本周 / 报告 / 事件，⏎ 钻进节点详情或打开报告
 okr status      # 看板
 okr tree --all  # 树，含已完成和已取消
 okr show o1     # 详情：燃起图、评估、子节点、事件
 okr show kr1.2 --spec   # 派工包 markdown，带可复制的 claim / log / submit 命令
 okr recent --days 7     # 最近事件
+okr week                # 本周：计划、遗留、待确认提案、近 4 周吞吐
+okr report list         # reports/ 与 logs/ 里的周报、周计划、日报
+okr status --md         # 任何看板类命令都能出 markdown；管道里默认 80 列纯文本，--width 120 改宽，--ansi 强制颜色
 okr velocity            # 近 4 周完成数与用时
 okr brief               # 会话开始先看：逾期 / 将到期 / 阻塞 / 停滞 / 待验收超时 / 已领取 / 上层落后 / 待确认提案
 okr week [--week W]     # 某周的计划（按 order）和遗留
@@ -78,9 +81,9 @@ okr migrate             # 旧 goals.yaml 迁到新模型
 
 节点可以用 id 或名字关键词指代。匹配到多个时列出候选并退出码 2，不猜；没有匹配也是退出码 2（`--json` 里 `candidates` 为空）。
 
-通用参数：`--json`（读写都支持，错误也是 JSON）、`--today 2026-03-15`（只影响读，写命令传了直接拒绝）、`--at`（补记时间，给日期就是那一天，晚于今天或晚于当前 5 分钟以上的时间拒绝）、`--by`（缺省 `OKR_BY`）、`--session`、`--confirmed`、`--force`、`--demo`。时间戳一律要求本地时区显式偏移（如 `+08:00`），别的格式会被自动规整。`OKR_DIR=…` 换数据目录。不认识的 `--flag` 直接拒绝。冻结 / 取消的节点（含继承自祖先）默认拒绝事件类写入（log / done / claim 等），`--force` 放行；add / edit / move 不受影响。退出码：0 成功，1 错误，2 指代歧义，3 守卫拒绝或 validate 失败，4 锁超时。
+通用参数：`--json`（读写都支持，错误也是 JSON）、`--today 2026-03-15`（只影响读，写命令传了直接拒绝）、`--at`（补记时间，给日期就是那一天，晚于今天或晚于当前 5 分钟以上的时间拒绝）、`--by`（缺省 `OKR_BY`）、`--session`、`--confirmed`、`--force`、`--demo`。时间戳一律要求本地时区显式偏移（如 `+08:00`），别的格式会被自动规整。`OKR_DIR=…` 换数据目录。不认识的 `--flag` 直接拒绝。人类输出三种：终端里 ANSI；管道、`NO_COLOR` 或 `--plain` 是 80 列纯文本（`--width N` 改宽）；`--md` 是 markdown（status / tree / show / week / velocity / recent / changes / report list），图表放在代码块里；`--ansi` 强制颜色。冻结 / 取消的节点（含继承自祖先）默认拒绝事件类写入（log / done / claim 等），`--force` 放行；add / edit / move 不受影响。退出码：0 成功，1 错误，2 指代歧义，3 守卫拒绝或 validate 失败，4 锁超时。
 
-TUI 按键：`←→` 或 `Tab` 切页（也可按 `1`–`3`），`↑↓` 选节点或滚动，`PgUp/PgDn` 翻页，`⏎` 看详情，`esc` 返回，`a` 树页显示已完成，`/` 筛选（`esc` 清除），`r` 重新读取，`q` 退出。
+TUI 页签：看板、树（目标带本周变化 ▲▼）、本周（计划 / 遗留 / 提案 / 吞吐）、报告（周报 / 周计划 / 日报，⏎ 阅读，阅读时 `←→` 翻上一份 / 下一份）、事件。按键：`←→` 或 `Tab` 切页（也可按 `1`–`5`），`↑↓` 选节点或滚动，`PgUp/PgDn` 翻页，`⏎` 看详情或打开报告，`esc` 返回，`a` 树页显示已完成，`/` 筛选（`esc` 清除），`r` 重新读取，`q` 退出。
 
 ## 结构
 
@@ -94,7 +97,8 @@ src/
   validate.ts   数据校验与目录校验（iCloud 副本、git fsck）
   migrate.ts    旧 goals.yaml 迁移
   demo.ts       示例数据
-  views/        common · tree · status 看板 · detail 详情 · habit 热力图 · events 事件流
+  render.ts     输出格式判定（ansi / plain / md）与去色
+  views/        common · tree · status 看板 · detail 详情（含依赖链）· deps · week 本周 · velocity 吞吐 · reports 报告列表与阅读 · habit 热力图 · events 事件流 · md 各视图的 markdown
   tui.ts        全屏页签式交互
   cli.ts        命令入口、守卫、输出（含 okr protocol）
 test/           node --test

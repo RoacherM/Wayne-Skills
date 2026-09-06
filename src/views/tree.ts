@@ -2,7 +2,7 @@ import { bar, bold, color, dim, healthTag, KIND_ICON, pad, rule, STAGE_SYM, trun
 import type { Tree } from '../project.ts';
 import type { NodeState } from '../types.ts';
 import { STAGE_LABEL } from '../types.ts';
-import { colorOf, flagTags, isInactive, pct } from './common.ts';
+import { colorOf, flagTags, isInactive, pct, weekDeltaTag } from './common.ts';
 
 export interface TreeOpts {
   width: number;
@@ -65,6 +65,8 @@ export function treeRow(t: Tree, s: NodeState, selected: boolean, W: number): st
     tail = `${dim('本周期')} ${s.habit.thisPeriod}/${s.habit.times}  ${healthTag(s.health)}`;
   } else {
     const parts = [bar((s.progress ?? 0) * 100, 12, inactive ? 238 : c), pad(pct(s.progress), 4, 'right')];
+    const wd = weekDeltaTag(t, s);
+    if (wd) parts.push(wd);
     if (s.assess?.stale) parts.push(dim(`评估 ${pct(s.assess.value)} 已过期`));
     else if (s.assess) parts.push(dim(`评估`));
     parts.push(healthTag(s.health));

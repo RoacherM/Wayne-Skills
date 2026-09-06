@@ -27,8 +27,8 @@ DESIGN.md §8 分五步开发，目前到第 2 步。协议按最终形态写，
 |---|---|---|
 | `init` `add` `edit` `move` `rm` `tree` `show [--spec]` `validate` `migrate` `repo add\|rm\|list` | 可用 | |
 | `log` `done` `block` `claim` `submit` `reject` `assess` `check` `recent` | 可用 | |
-| `status` `velocity` `protocol` | 可用 | |
-| `tui` | 可用，仅限终端 | 需要 TTY，agent 环境下退出 1，agent 用 `status` / `tree` |
+| `status` `velocity` `protocol` `report list` | 可用 | 人类输出：终端 ANSI；管道 / `--plain` 80 列纯文本（`--width N`）；`--md` markdown（status tree show week velocity recent changes report list）|
+| `tui` | 可用，仅限终端 | 需要 TTY，agent 环境下退出 1，agent 用 `status` / `tree`（管道下自动是 80 列纯文本，要贴给用户就直接贴；要 markdown 加 `--md`） |
 | `brief` `week [--week W]` `candidates [--dispatchable]` `changes --since` `commits [--since] [--limit]` `apply --from <plan.yaml> --confirmed` / `apply --dismiss` `report data [--week W]` | 可用 | |
 | `report write --kind daily\|weekly --from <md>\|--stdin` `report status` `deliver notes [--probe\|--dry-run]` `job install\|remove\|status\|run` | 可用 | 报告 / 备忘录 / 定时任务见 §11 |
 
