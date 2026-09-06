@@ -68,6 +68,9 @@ okr changes --since last-daily    # 上次日报以来写了什么（按记录�
 okr commits --since last-weekly   # 登记仓库的 git log
 okr apply --from 2026-W36.plan.yaml --confirmed   # 落周计划（reports/ 下的提案文件）；--dismiss 否掉待处理提案
 okr report data --week 2026-W36   # 周报数据：各节点本周进度变化、完成的任务、事件计数、计划、brief
+okr report write --kind weekly --from w36.md   # 把写好的报告存进 reports/ 并记 report 事件；report status 看今天 / 本周写没写
+okr deliver notes --from w36.md   # 推到 Apple 备忘录（同名更新）；--probe 只做授权测试
+okr job install                   # 装 launchd 日报（每天 11:00）/ 周报（周一 10:00），无头 claude/codex 写正文；job status / remove / run daily --dry-run
 okr protocol            # 打印 PROTOCOL.md，agent 先读它
 okr validate            # 数据、iCloud 冲突副本、git 健康
 okr migrate             # 旧 goals.yaml 迁到新模型

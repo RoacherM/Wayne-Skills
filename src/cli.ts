@@ -1,13 +1,17 @@
-import { existsSync, readFileSync, statSync } from 'node:fs';
-import { basename, dirname, resolve } from 'node:path';
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { homedir } from 'node:os';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
 import { AMBER, bold, color, dim, GRAY, GREEN, HEALTH, RED, STAGE_SYM } from './ansi.ts';
-import { addDays, dayOf, daysBetween, isValidDate, isValidWeek, nowIso, parseTs, sortEvents, todayIso, tsMs } from './dates.ts';
+import { addDays, dayOf, daysBetween, isValidDate, isValidWeek, nowIso, parseTs, sortEvents, todayIso, tsMs, weekLabel, weekMonday } from './dates.ts';
 import { DEMO_EVENTS, DEMO_NODES, DEMO_TODAY } from './demo.ts';
 import { MigrateError, migrate } from './migrate.ts';
 import { applyPlan, brief, candidates, changes, PlanError, proposalFiles, repoCommits, reportData, resolveSince, weekView } from './plan.ts';
 import type { TaskFacts } from './plan.ts';
+import { agentCommand, dailyPrompt, defaultTitle, existingReport, jobLabel, KIND_CN, nextPlanFile, normalizePlanWeek, NOTES_SCRIPT, notesBody, parseTime, parseWeekday, plistXml, REPORT_KINDS, reportFile, reportStatus, splitWeekly, weeklyPrompt } from './report.ts';
+import type { ReportKind } from './report.ts';
 import { descendants, isAncestor, matchNode, newId, project, specComplete, takenIds, velocity } from './project.ts';
 import type { Tree } from './project.ts';
 import * as store from './store.ts';
@@ -71,6 +75,7 @@ const KNOWN_FLAGS = new Set([
   'value', 'node', 'days', 'weeks', 'all', 'spec', 'merge-events', 'kind', 'name', 'area', 'parent', 'start', 'end',
   'weight', 'status', 'metric', 'unit', 'from', 'to', 'cadence', 'habit', 'priority', 'deadline', 'dep', 'deps',
   'week', 'order', 'goal', 'accept', 'verify', 'reason', 'limit', 'help', 'version', 'dir', 'since', 'dismiss', 'dispatchable',
+  'stdin', 'title', 'folder', 'probe', 'dry-run', 'daily', 'weekly', 'weekday', 'agent', 'skip-probe',
 ]);
 
 const str = (k: string): string | undefined => {
@@ -155,13 +160,17 @@ function pickNode(q: string | undefined, nodes: Node[], usage: string): Node {
 }
 
 /** Every write: lock, reload inside the lock, run, commit. Never writes demo data. */
-function write<T extends Record<string, unknown>>(fn: (nodes: Node[], events: Event[]) => { data: T; msg: string; human: () => void }): void {
+function preWrite(): void {
   if (demo) fail('--demo 是只读的');
   if (str('today') !== undefined) fail('--today 只影响读，写入命令不接受', 1);
   requireData();
   // Event arguments are checked before the lock so a bad --at / --hours cannot fail after nodes.yaml is already on disk.
   eventTs();
   num('hours');
+}
+
+function write<T extends Record<string, unknown>>(fn: (nodes: Node[], events: Event[]) => { data: T; msg: string; human: () => void }): void {
+  preWrite();
   try {
     store.withLock(() => {
       const { data, msg, human } = fn(store.loadNodes(), store.loadEvents());
@@ -910,10 +919,382 @@ function cmdDismiss(): void {
   });
 }
 
+// ── reports: write / status, notes delivery, launchd jobs ──────────────
+
+function reportKind(dflt: ReportKind): ReportKind {
+  const k = str('kind') ?? dflt;
+  if (!(REPORT_KINDS as readonly string[]).includes(k)) fail(`--kind 只接受 daily / weekly，得到 "${k}"`);
+  return k as ReportKind;
+}
+
+/** The period a report covers: today for daily, --week (default this week) for weekly. */
+function reportLabelFor(kind: ReportKind, t: Tree): string {
+  return kind === 'daily' ? today : weekFlag(t);
+}
+
+/** Markdown from --from <file> (`-` = stdin, bare names looked up under reports/) or --stdin. */
+function readContent(usage: string): string {
+  const from = str('from');
+  if (flag('stdin') || from === '-') return readFileSync(0, 'utf8');
+  if (!from) fail(usage);
+  const path = existsSync(from) ? from : resolve(store.REPORTS, from);
+  if (!existsSync(path)) fail(`找不到 ${from}`);
+  return readFileSync(path, 'utf8');
+}
+
+interface ReportResult {
+  event: Event | null;
+  existing: Event | null;
+  committed: boolean;
+  backup: { path: string; ok: boolean; error?: string } | null;
+}
+
+/**
+ * Record a report under the lock: run `save` (files), append one report event unless this period already has one
+ * (a re-run after a missed slot only refreshes files), commit, then `git bundle` to the backup dir (DESIGN §9). Never prints the result.
+ */
+function finishReport(kind: ReportKind, label: string, note: string, extra: Partial<Event> = {}, save?: () => void): ReportResult {
+  try {
+    return store.withLock(() => {
+      const events = store.loadEvents();
+      const existing = existingReport(events, kind, label);
+      save?.();
+      let event: Event | null = null;
+      if (!existing) {
+        event = mkEvent(null, 'report', note, { kind, ...(kind === 'weekly' ? { week: label } : {}), ...extra });
+        store.appendEvent(event);
+      }
+      const c = store.commit(`report ${kind} ${label}`);
+      if (!c.committed) console.error(color(RED, '! ') + `git commit 失败（文件已写入）: ${c.error ?? ''}`);
+      const backup = event ? store.backup() : null;
+      if (backup && !backup.ok) console.error(color(AMBER, '! ') + `git bundle 备份失败: ${backup.error}`);
+      return { event, existing, committed: c.committed, backup };
+    });
+  } catch (err) {
+    if (err instanceof store.LockTimeout) fail(err.message, 4);
+    throw err;
+  }
+}
+
+function cmdReportStatus(): void {
+  const t = buildTree();
+  const { events } = load();
+  const s = reportStatus(events, today, t.week);
+  ok({ ...s }, () => {
+    const line = (k: ReportKind, last: Event | null, cur: Event | null, what: string) =>
+      console.log(`${cur ? color(GREEN, '✓') : dim('·')} ${KIND_CN[k]}  ${cur ? `${what}已写（${cur.ts.slice(0, 16)}${cur.by ? `，${cur.by}` : ''}）` : `${what}还没写`}${last ? dim(`  上次 ${dayOf(last.ts)}`) : dim('  从未写过')}`);
+    line('daily', s.daily.last, s.daily.today, '今天');
+    line('weekly', s.weekly.last, s.weekly.thisWeek, `${t.week} `);
+  });
+}
+
+function cmdReportWrite(): void {
+  preWrite();
+  const kind = reportKind('weekly');
+  const t = buildTree();
+  const label = reportLabelFor(kind, t);
+  const content = readContent('用法: okr report write --kind daily|weekly [--week W] --from <report.md>|--stdin [--force]');
+  if (!content.trim()) fail('报告内容为空');
+  const file = reportFile(label);
+  const path = resolve(store.REPORTS, file);
+  if (existsSync(path) && !force) fail(`${file} 已存在，--force 覆盖`, 3, { file });
+  const r = finishReport(kind, label, `${KIND_CN[kind]} ${label} → ${file}`, { source: file }, () => {
+    mkdirSync(store.REPORTS, { recursive: true });
+    writeFileSync(path, content.endsWith('\n') ? content : content + '\n');
+  });
+  ok({ kind, label, file, path, event: r.event, existing: r.existing, committed: r.committed, backup: r.backup?.ok ? r.backup.path : null }, () => {
+    console.log(`${color(GREEN, '✓')} 已存 ${path}`);
+    console.log(r.event ? dim(`  记 report 事件（${kind} ${label}）`) : dim(`  ${label} 的${KIND_CN[kind]}事件已有（${r.existing!.ts.slice(0, 16)}），不重复记`));
+    if (r.backup?.ok) console.log(dim(`  备份 ${r.backup.path}`));
+  });
+}
+
+/** Upsert one note (folder / title) in Apple Notes through osascript. Errors come back, the caller decides whether they are fatal. */
+function pushNote(folder: string, title: string, md: string): { ok: true; result: string } | { ok: false; error: string } {
+  if (process.platform !== 'darwin') return { ok: false, error: 'deliver notes 只在 macOS 上可用（需要备忘录 app）' };
+  try {
+    const out = execFileSync('osascript', ['-', folder, title, notesBody(title, md)], { input: NOTES_SCRIPT, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 120_000 });
+    return { ok: true, result: out.trim() || 'ok' };
+  } catch (err) {
+    const e = err as { stderr?: string; message: string };
+    const msg = (e.stderr ?? e.message).trim().split('\n').pop() ?? '';
+    const auth = /-1743|-600|not allowed|not authorized|未授权|不允许/i.test(msg) ? '。先在终端跑一次 okr deliver notes --probe 完成自动化授权（系统设置 → 隐私与安全性 → 自动化）' : '';
+    return { ok: false, error: `写备忘录失败: ${msg}${auth}` };
+  }
+}
+
+function cmdDeliver(): void {
+  if (args._[1] !== 'notes') fail('用法: okr deliver notes [--kind daily|weekly] [--week W] --from <md>|--stdin [--title T] [--folder OKR] [--dry-run] | deliver notes --probe');
+  const folder = str('folder') ?? 'OKR';
+  if (flag('probe')) {
+    const title = 'OKR 授权测试';
+    const md = `okr deliver notes --probe 在 ${nowIso()} 写入。看到这条说明备忘录自动化授权已完成，可以删掉。`;
+    if (flag('dry-run')) return ok({ folder, title, html: notesBody(title, md) }, () => console.log(notesBody(title, md)));
+    const r = pushNote(folder, title, md);
+    if (!r.ok) fail(r.error);
+    return ok({ folder, title, result: r.result }, () => console.log(`${color(GREEN, '✓')} 备忘录 ${folder} / ${title}（${r.result}）。授权完成，launchd 任务可以写备忘录了。`));
+  }
+  const kind = reportKind('daily');
+  const t = buildTree();
+  const label = reportLabelFor(kind, t);
+  const content = readContent('用法: okr deliver notes [--kind daily|weekly] --from <md>|--stdin [--title T]');
+  if (!content.trim()) fail('内容为空');
+  const title = str('title') ?? defaultTitle(kind, label);
+  if (flag('dry-run')) return ok({ kind, label, folder, title, html: notesBody(title, content) }, () => console.log(notesBody(title, content)));
+  preWrite();
+  const p = pushNote(folder, title, content);
+  if (!p.ok) fail(p.error);
+  const r = finishReport(kind, label, `${KIND_CN[kind]} ${label} → 备忘录 ${folder}/${title}`);
+  ok({ kind, label, folder, title, result: p.result, event: r.event, existing: r.existing, committed: r.committed, backup: r.backup?.ok ? r.backup.path : null }, () => {
+    console.log(`${color(GREEN, '✓')} 备忘录 ${folder} / ${title}（${p.result === 'updated' ? '已更新' : '已新建'}）`);
+    console.log(r.event ? dim(`  记 report 事件（${kind} ${label}）`) : dim(`  ${label} 的${KIND_CN[kind]}事件已有，不重复记`));
+  });
+}
+
+// ── launchd ──────────────────────────────────────────
+const LAUNCH_AGENTS = join(homedir(), 'Library', 'LaunchAgents');
+const plistPath = (kind: ReportKind) => join(LAUNCH_AGENTS, `${jobLabel(kind)}.plist`);
+
+/** --agent / OKR_AGENT: a path, or a name looked up on PATH and the usual install dirs. */
+/** The plist hardcodes node; prefer the PATH entry (e.g. /opt/homebrew/bin/node) over the versioned Cellar path it resolves to, so a brew upgrade does not break the job. */
+function stableNode(): string {
+  const real = (p: string) => {
+    try {
+      return realpathSync(p);
+    } catch {
+      return '';
+    }
+  };
+  const target = real(process.execPath);
+  for (const d of (process.env.PATH ?? '').split(':')) {
+    const c = join(d, 'node');
+    if (d && !d.includes('node_modules') && existsSync(c) && real(c) === target) return c;
+  }
+  return process.execPath;
+}
+
+function findAgent(): string | null {
+  const want = str('agent') ?? process.env.OKR_AGENT ?? 'claude';
+  if (want.includes('/')) return existsSync(want) ? resolve(want) : null;
+  const dirs = [...(process.env.PATH ?? '').split(':'), '/opt/homebrew/bin', '/usr/local/bin', join(homedir(), '.local', 'bin'), join(homedir(), '.claude', 'local', 'bin'), join(homedir(), '.npm-global', 'bin')];
+  for (const d of dirs) if (d && existsSync(join(d, want))) return join(d, want);
+  return null;
+}
+
+function launchctl(a: string[]): { ok: boolean; out: string } {
+  try {
+    return { ok: true, out: execFileSync('launchctl', a, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }) };
+  } catch (err) {
+    const e = err as { stderr?: string; stdout?: string; message: string };
+    return { ok: false, out: (e.stderr || e.stdout || e.message).trim() };
+  }
+}
+
+function cmdJob(): void {
+  const sub = args._[1];
+  const usage = '用法: okr job install [--daily 11:00] [--weekly 10:00] [--weekday mon] [--agent claude|codex|<路径>] [--skip-probe] | job remove | job status | job run daily|weekly [--dry-run]';
+  if (sub === 'run') return cmdJobRun();
+  if (sub === 'status') return cmdJobStatus();
+  if (process.platform !== 'darwin') fail('okr job 用 launchd，只在 macOS 上可用');
+  if (sub === 'remove') return cmdJobRemove();
+  if (sub !== 'install') fail(usage);
+  if (demo) fail('--demo 是只读的');
+  requireData();
+  const daily = parseTime(str('daily') ?? '11:00');
+  const weekly = parseTime(str('weekly') ?? '10:00');
+  const weekday = parseWeekday(str('weekday') ?? 'mon');
+  if (!daily || !weekly) fail('--daily / --weekly 要 HH:MM');
+  if (weekday === null) fail('--weekday 要 mon…sun 或 0–6');
+  const agent = findAgent();
+  if (!agent) fail(`找不到 agent 可执行文件 ${str('agent') ?? process.env.OKR_AGENT ?? 'claude'}，用 --agent 给绝对路径`);
+  const node = stableNode();
+  const script = realpathSync(process.argv[1]);
+  const uid = process.getuid!();
+  mkdirSync(store.LOGS, { recursive: true });
+  mkdirSync(LAUNCH_AGENTS, { recursive: true });
+  const env: Record<string, string> = {
+    HOME: homedir(),
+    OKR_DIR: store.DIR,
+    OKR_AGENT: agent,
+    OKR_SKIP_SKILL: '1',
+    LANG: process.env.LANG ?? 'zh_CN.UTF-8',
+    PATH: [dirname(node), dirname(agent), '/usr/local/bin', '/opt/homebrew/bin', '/usr/bin', '/bin'].filter((v, i, a) => a.indexOf(v) === i).join(':'),
+  };
+  if (process.env.TMPDIR) env.TMPDIR = process.env.TMPDIR; // the write lock lives there; launchd's default would be /tmp and miss it
+  if (process.env.OKR_AGENT_ARGS) env.OKR_AGENT_ARGS = process.env.OKR_AGENT_ARGS;
+  const jobs: { kind: ReportKind; label: string; plist: string; at: string; log: string }[] = [];
+  for (const kind of REPORT_KINDS) {
+    const time = kind === 'daily' ? daily : weekly;
+    const label = jobLabel(kind);
+    const log = join(store.LOGS, `${kind}.log`);
+    const path = plistPath(kind);
+    writeFileSync(path, plistXml({ label, program: [node, script, 'job', 'run', kind], hour: time.hour, minute: time.minute, weekday: kind === 'weekly' ? weekday : undefined, env, log, workdir: store.DIR }));
+    launchctl(['bootout', `gui/${uid}/${label}`]);
+    const b = launchctl(['bootstrap', `gui/${uid}`, path]);
+    if (!b.ok) fail(`launchctl bootstrap ${label} 失败: ${b.out}`);
+    jobs.push({ kind, label, plist: path, at: `${kind === 'weekly' ? `weekday ${weekday} ` : '每天 '}${String(time.hour).padStart(2, '0')}:${String(time.minute).padStart(2, '0')}`, log });
+  }
+  let probe: string | null = null;
+  if (!flag('skip-probe')) {
+    const p = pushNote(str('folder') ?? 'OKR', 'OKR 授权测试', `okr job install 在 ${nowIso()} 写入。看到这条说明备忘录自动化授权已完成，可以删掉。`);
+    if (!p.ok) fail(`任务已安装，但${p.error}`);
+    probe = p.result;
+  }
+  ok({ node, script, agent, jobs, probe }, () => {
+    console.log(`${color(GREEN, '✓')} 已安装 launchd 任务`);
+    for (const j of jobs) console.log(`  ${KIND_CN[j.kind]}  ${j.at}  ${dim(j.plist)}`);
+    console.log(dim(`  node  ${node}\n  okr   ${script}\n  agent ${agent}\n  日志  ${store.LOGS}/`));
+    console.log(probe ? `${color(GREEN, '✓')} 备忘录授权测试通过（${probe}）` : dim('  跳过了备忘录授权测试；手动跑一次 okr deliver notes --probe'));
+    console.log(dim('  试跑 okr job run daily --dry-run 看给 agent 的提示词；okr job status 看状态'));
+  });
+}
+
+function cmdJobRemove(): void {
+  const uid = process.getuid!();
+  const removed: string[] = [];
+  for (const kind of REPORT_KINDS) {
+    launchctl(['bootout', `gui/${uid}/${jobLabel(kind)}`]);
+    const p = plistPath(kind);
+    if (existsSync(p)) {
+      unlinkSync(p);
+      removed.push(p);
+    }
+  }
+  ok({ removed }, () => console.log(removed.length ? `${color(GREEN, '✓')} 已卸载 ${removed.join('、')}` : dim('没有安装过 okr 的 launchd 任务')));
+}
+
+function cmdJobStatus(): void {
+  const t = buildTree();
+  const { events } = load();
+  const s = reportStatus(events, today, t.week);
+  const uid = process.getuid?.() ?? 0;
+  const jobs = REPORT_KINDS.map((kind) => {
+    const plist = plistPath(kind);
+    const p = process.platform === 'darwin' ? launchctl(['print', `gui/${uid}/${jobLabel(kind)}`]) : { ok: false, out: '' };
+    const log = join(store.LOGS, `${kind}.log`);
+    let lastRun: string | null = null;
+    try {
+      lastRun = nowIso(statSync(log).mtime);
+    } catch {
+      /* no log yet */
+    }
+    const cur = kind === 'daily' ? s.daily.today : s.weekly.thisWeek;
+    const last = kind === 'daily' ? s.daily.last : s.weekly.last;
+    return { kind, label: jobLabel(kind), plist: existsSync(plist) ? plist : null, loaded: p.ok, log, lastRun, lastReport: last?.ts ?? null, current: cur?.ts ?? null };
+  });
+  ok({ jobs, today, week: t.week }, () => {
+    for (const j of jobs) {
+      const state = j.loaded ? '已加载' : j.plist ? '未加载（plist 在，launchctl 没接管）' : '未安装';
+      console.log(`${j.loaded ? color(GREEN, '●') : dim('○')} ${KIND_CN[j.kind]}  ${state}${j.lastRun ? dim(`  上次运行 ${j.lastRun.slice(0, 16)}`) : ''}${j.lastReport ? dim(`  上次报告 ${j.lastReport.slice(0, 10)}`) : dim('  还没写过报告')}${j.current ? color(GREEN, `  ${j.kind === 'daily' ? '今天' : '本周'}已写`) : ''}`);
+    }
+    console.log(dim(`  日志 ${store.LOGS}/  安装 okr job install  卸载 okr job remove`));
+  });
+}
+
+function runAgent(prompt: string): string {
+  const bin = findAgent();
+  if (!bin) fail('找不到 agent 可执行文件（--agent 或 OKR_AGENT）');
+  const extra = (process.env.OKR_AGENT_ARGS ?? '').split(/\s+/).filter(Boolean);
+  const { cmd, args: a } = agentCommand(bin, extra);
+  console.error(dim(`[${nowIso()}] agent: ${cmd} ${a.join(' ')}`));
+  try {
+    return execFileSync(cmd, a, { input: prompt, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 20 * 60_000, maxBuffer: 64 * 1024 * 1024, env: { ...process.env, OKR_SKIP_SKILL: '1' } }).trim();
+  } catch (err) {
+    const e = err as { stderr?: string; message: string };
+    fail(`agent 运行失败: ${(e.stderr || e.message).trim().split('\n').slice(-3).join(' | ')}`);
+  }
+}
+
+/**
+ * What launchd runs. Daily: skip when today's report exists; nothing new → "暂无更新" straight to Notes; otherwise the agent
+ * writes from changes + brief + plan. Weekly: the agent reviews last week and proposes this week; markdown → reports/<week>.md,
+ * the trailing yaml block → reports/<week>.plan.yaml, a copy to Notes. --dry-run prints the prompt and writes nothing.
+ */
+function cmdJobRun(): void {
+  const kind = args._[2] as ReportKind;
+  if (!(REPORT_KINDS as readonly string[]).includes(kind)) fail('用法: okr job run daily|weekly [--dry-run] [--agent <bin>]');
+  const dry = flag('dry-run');
+  if (dry) requireData();
+  else preWrite();
+  const t = buildTree();
+  const { events } = load();
+  const log = (m: string) => console.error(dim(`[${nowIso()}] ${m}`));
+  const label = kind === 'daily' ? today : t.week;
+  const existing = existingReport(events, kind, label);
+  if (existing && !dry) {
+    log(`${KIND_CN[kind]} ${label} 已有 report 事件（${existing.ts}），跳过`);
+    return ok({ kind, label, skipped: 'exists', existing }, () => console.log(dim(`${KIND_CN[kind]} ${label} 已写过，跳过`)));
+  }
+  const folder = str('folder') ?? 'OKR';
+  if (kind === 'daily') {
+    const s = resolveSince(events, 'last-daily')!;
+    const rows = changes(events, s.since);
+    const b = brief(t, events, store.REPORTS);
+    const w = weekView(t, events, store.REPORTS);
+    const title = defaultTitle('daily', label);
+    if (!rows.length && b.empty) {
+      log('没有新事件、没有要提醒的，直接写「暂无更新」');
+      const md = `暂无更新：自${s.since ? `上次日报（${s.since.slice(0, 16)}）` : '开始'}起没有新事件，也没有到期、阻塞、停滞的任务。`;
+      if (dry) return ok({ kind, label, quiet: true, markdown: md }, () => console.log(md));
+      const p = pushNote(folder, title, md);
+      if (!p.ok) fail(p.error);
+      const r = finishReport('daily', label, `日报 ${label} → 备忘录 ${folder}/${title}（暂无更新）`, { by: 'launchd' });
+      return ok({ kind, label, quiet: true, title, result: p.result, event: r.event }, () => console.log(`${color(GREEN, '✓')} 日报 ${label}：暂无更新（备忘录 ${p.result}）`));
+    }
+    const payload = { today, week: t.week, since: s.since, changes: rows, brief: b, plan: { planned: w.planned, carryOver: w.carryOver, proposal: w.proposal, proposals: w.proposals }, candidates: candidates(t).slice(0, 30) };
+    const prompt = dailyPrompt(payload);
+    if (dry) return ok({ kind, label, quiet: false, prompt }, () => console.log(prompt));
+    const md = runAgent(prompt);
+    if (!md) fail('agent 没有输出');
+    mkdirSync(store.LOGS, { recursive: true });
+    writeFileSync(join(store.LOGS, `${label}.daily.md`), md + '\n');
+    const p = pushNote(folder, title, md);
+    if (!p.ok) fail(`${p.error}（正文已存 ${join(store.LOGS, `${label}.daily.md`)}）`);
+    const r = finishReport('daily', label, `日报 ${label} → 备忘录 ${folder}/${title}`, { by: 'launchd' });
+    return ok({ kind, label, title, result: p.result, event: r.event, chars: md.length }, () => console.log(`${color(GREEN, '✓')} 日报 ${label} 已写到备忘录（${p.result}，${md.length} 字）`));
+  }
+  // weekly: review the week that just ended, propose the one starting
+  const prev = weekLabel(addDays(weekMonday(t.week)!, -1));
+  const review = reportData(t, events, store.REPORTS, prev);
+  const s = resolveSince(events, 'last-weekly')!;
+  const rows = changes(events, s.since);
+  const commits = repoCommits(store.loadRepos(), s.since, 100);
+  const w = weekView(t, events, store.REPORTS);
+  const payload = {
+    today,
+    thisWeek: { week: t.week, start: w.start, end: w.end, planned: w.planned, carryOver: w.carryOver, proposal: w.proposal },
+    review: { ...review, brief: undefined, candidates: undefined, plan: undefined },
+    brief: review.brief,
+    candidates: candidates(t),
+    changes: rows,
+    commits,
+  };
+  const prompt = weeklyPrompt(payload);
+  if (dry) return ok({ kind, label, prompt }, () => console.log(prompt));
+  const out = runAgent(prompt);
+  if (!out) fail('agent 没有输出');
+  const { markdown, plan: rawPlan } = splitWeekly(out);
+  const plan = rawPlan ? normalizePlanWeek(rawPlan, label) : null;
+  const file = reportFile(label);
+  const planFile = plan ? nextPlanFile(label, existsSync(store.REPORTS) ? readdirSync(store.REPORTS) : []) : null;
+  const md = planFile ? `${markdown}\n> 本周提案已存为 ${planFile}：确认就 \`okr apply --from ${planFile} --confirmed\`，不要就 \`okr apply --dismiss\`。\n` : markdown;
+  const r = finishReport('weekly', label, `周报 ${label} → ${file}${planFile ? ` + ${planFile}` : ''}`, { by: 'launchd', source: file }, () => {
+    mkdirSync(store.REPORTS, { recursive: true });
+    writeFileSync(resolve(store.REPORTS, file), md);
+    if (plan && planFile) writeFileSync(resolve(store.REPORTS, planFile), plan);
+  });
+  const p = pushNote(folder, defaultTitle('weekly', label), md);
+  if (!p.ok) log(`${p.error}；周报已存 reports/${file}`);
+  return ok({ kind, label, file, planFile, notes: p.ok ? p.result : null, event: r.event, chars: md.length }, () =>
+    console.log(`${color(GREEN, '✓')} 周报 ${label} 已存 reports/${file}${planFile ? `，提案 ${planFile}` : ''}${p.ok ? `，备忘录 ${p.result}` : ''}`),
+  );
+}
+
 function cmdReport(): void {
   const sub = args._[1];
-  if (sub === 'write') fail('report write 在下一步实现；先用 okr report data --json 取数据，报告由 skill 写到 reports/。');
-  if (sub !== 'data') fail('用法: okr report data [--week 2026-W36]');
+  if (sub === 'write') return cmdReportWrite();
+  if (sub === 'status') return cmdReportStatus();
+  if (sub !== 'data') fail('用法: okr report data [--week W] | report write --kind daily|weekly [--week W] --from <md>|--stdin [--force] | report status');
   const t = buildTree();
   const { events } = load();
   const r = reportData(t, events, store.REPORTS, weekFlag(t));
@@ -1123,6 +1504,8 @@ function cmdHelp(): void {
       `${bold('记录')}   log · done · block · claim · submit --link · reject · assess --value --reason · check · recent [--node] [--days]`,
       `${bold('数据')}   brief · week [--week W] · candidates [--dispatchable] · changes [--since last-daily|last-weekly|<ts>] · commits [--since] [--limit] · velocity [--weeks] · report data [--week W]`,
       `${bold('计划')}   apply --from <plan.yaml> --confirmed（见 protocol §6）· apply --dismiss [--from <plan.yaml>]`,
+      `${bold('报告')}   report write --kind daily|weekly [--week W] --from <md>|--stdin · report status · deliver notes [--kind] --from <md>|--stdin [--title] · deliver notes --probe`,
+      `${bold('定时')}   job install [--daily 11:00] [--weekly 10:00] [--weekday mon] [--agent claude|codex|<路径>] · job remove · job status · job run daily|weekly [--dry-run]`,
       `${bold('视图')}   tui · status · tree · show`,
       `${bold('协议')}   protocol（打印 PROTOCOL.md，agent 先读它再写）`,
       `${bold('skill')}  skill install [--force] · remove · status · link（装进 ~/.agents/skills 与 ~/.claude/skills；运行时自动补装/更新自己装的那份，OKR_SKIP_SKILL=1 关掉；link 把 okr 软链到 ~/.local/bin）`,
@@ -1182,6 +1565,8 @@ switch (cmd) {
   case 'commits': cmdCommits(); break;
   case 'apply': cmdApply(); break;
   case 'report': cmdReport(); break;
+  case 'deliver': cmdDeliver(); break;
+  case 'job': cmdJob(); break;
   case 'status': cmdStatus(); break;
   case 'tree': cmdTree(); break;
   case 'show': cmdShow(); break;

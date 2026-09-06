@@ -30,7 +30,7 @@ DESIGN.md §8 分五步开发，目前到第 2 步。协议按最终形态写，
 | `status` `velocity` `protocol` | 可用 | |
 | `tui` | 可用，仅限终端 | 需要 TTY，agent 环境下退出 1，agent 用 `status` / `tree` |
 | `brief` `week [--week W]` `candidates [--dispatchable]` `changes --since` `commits [--since] [--limit]` `apply --from <plan.yaml> --confirmed` / `apply --dismiss` `report data [--week W]` | 可用 | |
-| `report write` `deliver notes` | 待实现（§8 步 4） | 日报 / 周报由 agent 用 `okr changes --json` / `okr report data --json` 的数据写成 markdown 放到 `reports/`，写完记一条 report 事件的机制随步 4 一起来 |
+| `report write --kind daily\|weekly --from <md>\|--stdin` `report status` `deliver notes [--probe\|--dry-run]` `job install\|remove\|status\|run` | 可用 | 报告 / 备忘录 / 定时任务见 §11 |
 
 ## 2. 会话开始
 
@@ -149,9 +149,18 @@ node: kr1          # 这个仓库的工作默认记到哪个节点
 | 4 锁超时 | 等一秒重试一次 |
 | `committed: false` | 文件已写入，只是 git 提交失败，提醒用户跑 `okr validate` |
 
-## 11. 报告（§8 步 4 之后由定时任务触发）
+## 11. 报告与定时任务
 
-日报由脚本判断有没有更新，有更新才叫 agent 写：待确认提案提示、今日顺序及理由、到期与阻塞、待验收与已领取、建议拆解、昨日进度。周报 agent 写全文：上周回顾、各目标评估与周变化、吞吐、本周提案（同时写 `plan.yaml` 等用户确认）、风险。图用文本块。
+`okr job install [--daily HH:MM] [--weekly HH:MM --weekday mon]` 装两个 launchd 任务（`~/Library/LaunchAgents/com.roacherm.okr.{daily,weekly}.plist`，缺省日报每天 11:00、周报周一 10:00），装之前会往 Apple 备忘录推一条「OKR 授权测试」触发一次授权（`--skip-probe` 跳过；也可以单独 `okr deliver notes --probe`）。`okr job status` 看装没装、上次跑的结果；`okr job remove` 卸掉；`okr job run daily|weekly [--dry-run]` 手动跑一次，`--dry-run` 只打印将要交给 agent 的 prompt。日志在 `~/.okr/logs/{daily,weekly}.log`。
+
+任务用无头 agent 写正文：默认找 PATH 上的 `claude`（其次 `codex`），`--agent <bin>` / `OKR_AGENT` 指定，`OKR_AGENT_ARGS` 追加参数。
+
+- **日报**：先看 `changes --since last-daily`，没有新事件、没有到期 / 阻塞 / 待确认提案就只记一行日志不叫 agent。有事才让 agent 按数据写：待确认提案、今日顺序及理由、到期与阻塞、待验收与已领取、建议拆解、昨日进度；正文存 `logs/<日期>.daily.md` 并推到备忘录，记一条 `report` 事件（`kind: daily`）。
+- **周报**：回顾上一周（`report data`）并提案本周：上周回顾、各目标评估与周变化、吞吐、本周提案、风险。正文存 `reports/<周>.md`，agent 末尾的 `plan.yaml` 块存 `reports/<周>.plan[-N].yaml`（`week` 强制为本周），成为待确认提案，走 §6 的 `apply --confirmed` / `--dismiss`。记一条 `report` 事件（`kind: weekly, week`）。图用文本块。
+- **幂等**：同一天最多一条日报事件、同一周最多一条周报事件；重跑只刷新文件和备忘录，不再记事件。`changes --since last-daily|last-weekly` 就锚在这些事件上。
+- **备份**：每记一条 report 事件就把 `~/.okr` 的 git 打成 bundle 到 `~/Library/Application Support/okr/`（§9 意义上的异地副本，失败只警告）。
+- **手写报告**：agent 也可以自己用 `changes` / `report data` 的数据写好 markdown，再 `okr report write --kind weekly --from <文件>`（或 `--stdin`）存到 `reports/` 并记事件；同一周已有文件要 `--force` 覆盖（退出码 3）。`okr report status --json` 看今天 / 本周写没写。
+- **备忘录**：`okr deliver notes --from <md> [--title T --folder OKR]`（仅 macOS，同名笔记会被更新而不是新建）。
 
 ## 12. 不做的事
 

@@ -30,6 +30,7 @@ okr protocol
 | 问进度、看板、哪些落后 | §2 | `okr tree --json`（task 的 `flags` / `stage` 只在这里和 `show` 里）、`okr status --json`（根节点）、`okr show <id> --json` |
 | 评估某个目标到了几成 | §5 | 默认信推导；不同意才 `okr assess --value --reason` |
 | 建目标、拆任务、做周计划、今日清单 | §6 §7 | `okr week --json` + `okr candidates --json` 取数 → 展示提案 → 用户点头 → 写 `reports/<周>.plan.yaml` + `okr apply --from … --confirmed`；否掉就 `okr apply --dismiss` |
+| 写日报 / 周报、推到备忘录、装定时任务 | §11 | `okr changes --since last-daily --json` / `okr report data --json` 取数写 markdown → `okr report write --kind daily\|weekly --from <md>`；`okr deliver notes --from <md>`；用户要自动化就 `okr job install`（会触发备忘录授权，让用户自己跑） |
 | 改结构：加、改、挪、删、取消、冻结 | §7 | `okr add/edit/move/rm … --confirmed` |
 | 「这个仓库对应哪个 KR」、汇总仓库进度 | §8 | `okr repo add <path> --node <id>`，读仓库 `.okr.yaml` |
 | 派任务给执行 agent | §9 | `okr show <id> --spec`，整段贴给执行 agent |

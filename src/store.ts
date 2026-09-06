@@ -173,3 +173,26 @@ export function commit(msg: string): { committed: boolean; error?: string } {
 export function git(args: string[]): string {
   return execFileSync('git', ['-C', DIR, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
 }
+
+// ── backup ─────────────────────────────────────────────
+/** Where `git bundle` copies go: outside iCloud (see DESIGN §9), one file per data directory. */
+export const BACKUP_DIR = join(homedir(), 'Library', 'Application Support', 'okr');
+
+export function backupPath(): string {
+  return join(BACKUP_DIR, `okr-${createHash('sha1').update(DIR).digest('hex').slice(0, 12)}.bundle`);
+}
+
+/** Full-history bundle of the data repo. Called after every report event; failure is a warning, never an error. */
+export function backup(): { path: string; ok: boolean; error?: string } {
+  const path = backupPath();
+  if (!existsSync(join(DIR, '.git'))) return { path, ok: false, error: 'no .git' };
+  try {
+    mkdirSync(BACKUP_DIR, { recursive: true });
+    const tmp = `${path}.${process.pid}.tmp`;
+    git(['bundle', 'create', tmp, '--all']);
+    renameSync(tmp, path);
+    return { path, ok: true };
+  } catch (err) {
+    return { path, ok: false, error: String((err as Error).message).split('\n')[0] };
+  }
+}

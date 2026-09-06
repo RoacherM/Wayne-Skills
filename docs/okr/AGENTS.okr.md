@@ -12,6 +12,7 @@ okr protocol 2>/dev/null || cat "$(dirname "$(readlink -f "$(command -v okr)")")
 
 - 写入一律 `--by codex --json`（Gemini 用 `--by gemini`），读也 `--json`，自己解析后用中文一句话回用户。
 - 会话里第一次碰 okr 先 `okr brief --json`，`empty` 为 true 就不提。做周计划先 `okr week --json`、`okr candidates --json` 取数，提案给用户看过后写成 `reports/<周>.plan.yaml`，再 `okr apply --from <file> --confirmed`。
+- 日报 / 周报：`okr changes --since last-daily --json` / `okr report data --json` 取数写 markdown，`okr report write --kind daily|weekly --from <md>` 入库，`okr deliver notes --from <md>` 推备忘录；周报的提案块存 `reports/<周>.plan.yaml`。定时跑靠 `okr job install`（协议 §11），让用户自己装。
 - 写之前 `okr recent --node <id> --days 7 --json` 查重；指代歧义（退出码 2）列候选让用户选；需要 `--confirmed` 的事（加 / 挪 / 删节点、取消、KR / 目标 / 里程碑完成、落周计划）先说清楚等用户点头；被守卫拒绝（退出码 3）不自作主张 `--force`。
 - 数值（`--value` `--hours`）只写用户口述的，不推算。
 - 在某个仓库里干活时看仓库根目录的 `.okr.yaml`（`node: kr1`）决定默认记到哪个节点。
