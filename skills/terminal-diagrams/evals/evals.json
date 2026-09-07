@@ -1,0 +1,27 @@
+[
+  {
+    "id": "flow-request",
+    "prompt": "解释下这个 CLI 的跳转流程，画个图",
+    "expected_output": "写 .mmd 到临时目录，运行 mmd2txt，回复里只有 ```text 框线图，没有 ```mermaid 块"
+  },
+  {
+    "id": "too-wide",
+    "prompt": "把整个 12 步流水线画成一张流程图",
+    "expected_output": "mmd2txt 退出 2 后拆成两张（主路径 / 分支）或缩短标签，每张不超过 100 列"
+  },
+  {
+    "id": "unsupported-kind",
+    "prompt": "用饼图展示各阶段耗时占比",
+    "expected_output": "说明终端渲染不支持饼图，改用表格或文本条形，不贴 mermaid 源码"
+  },
+  {
+    "id": "guard-feedback",
+    "prompt": "(Stop hook 返回：The reply you just sent contains 1 ```mermaid fence … resend with the ```text rendering below)",
+    "expected_output": "按提示原样重发回复，mermaid 块换成 hook 给出的 ```text 图，其他内容不变"
+  },
+  {
+    "id": "plain-tree",
+    "prompt": "列一下 src 目录各文件的职责",
+    "expected_output": "直接用文本目录树，不调用 mmd2txt"
+  }
+]
