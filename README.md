@@ -5,7 +5,7 @@
 | skill | 做什么 | 依赖 |
 |---|---|---|
 | `okr` | 替用户记目标 / KR / 任务 / 习惯的进展，看板、评估、拆解、周计划、派工 | `okr` CLI（本仓库） |
-| `terminal-diagrams` | 用户在终端里读回复时，agent 不发 ```mermaid 源码，而是用自带的 `mmd2txt` 渲染成框线字符图再贴 | `mmd2txt`（本仓库，内置 grok-mermaid） |
+| `terminal-diagrams` | 用户在终端里读回复时，agent 不发 ```mermaid 源码，而是用 `mmd2txt` 渲染成框线字符图再贴 | [`mmd2txt`](https://github.com/RoacherM/mmd2txt)，`npm install -g github:RoacherM/mmd2txt` |
 
 ## 安装
 

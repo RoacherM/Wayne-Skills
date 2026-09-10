@@ -1,14 +1,11 @@
 #!/usr/bin/env node
 // mmd-guard — Stop hook for Claude Code and Codex. If the reply that just finished still contains a
-// ```mermaid fence, render each one with the sibling mmd2txt.js and send the agent back (exit 2, reason on
-// stderr) to resend the reply with ```text art. Reads the hook JSON on stdin; `stop_hook_active` true means
-// this turn was already continued once, so exit 0 and let it stop (no loops). Never blocks on render errors.
+// ```mermaid fence, render each one with mmd2txt (github.com/RoacherM/mmd2txt, on PATH) and send the agent
+// back (exit 2, reason on stderr) to resend the reply with ```text art. Reads the hook JSON on stdin;
+// `stop_hook_active` true means this turn was already continued once, so exit 0 and let it stop (no loops).
+// Never blocks on render errors, and does nothing when mmd2txt is not installed.
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const MMD2TXT = join(dirname(fileURLToPath(import.meta.url)), 'mmd2txt.js');
 
 let payload;
 try {
@@ -22,7 +19,11 @@ const fences = [...msg.matchAll(/^```mermaid[^\n]*\n([\s\S]*?)^```[ \t]*$/gm)].m
 if (fences.length === 0) process.exit(0);
 
 const blocks = fences.map((src, i) => {
-  const r = spawnSync(process.execPath, [MMD2TXT, '--max-width', '100'], { input: src, encoding: 'utf8', timeout: 20000 });
+  const r = spawnSync('mmd2txt', ['--max-width', '100'], { input: src, encoding: 'utf8', timeout: 20000 });
+  if (r.error?.code === 'ENOENT') {
+    process.stderr.write('mmd-guard: mmd2txt is not on PATH (npm install -g github:RoacherM/mmd2txt); reply left as is\n');
+    process.exit(0);
+  }
   const art = (r.stdout || '').replace(/\n+$/, '');
   const note = (r.stderr || '').trim();
   if (r.status === 1 || !art) {

@@ -1,7 +1,7 @@
 {
   "name": "wayne-skills",
   "version": "0.1.0",
-  "description": "Wayne's agent skills: okr (goal and task tracking with a terminal dashboard) and terminal-diagrams (mmd2txt: Mermaid to box art for agents whose user reads in a terminal).",
+  "description": "Wayne's agent skills: okr (goal and task tracking with a terminal dashboard) and terminal-diagrams (draw Mermaid as box art with mmd2txt for a user who reads in a terminal).",
   "repository": "github:RoacherM/Wayne-Skills",
   "homepage": "https://github.com/RoacherM/Wayne-Skills#readme",
   "type": "module",
@@ -24,7 +24,6 @@
   "devDependencies": {
     "@types/node": "^22.0.0",
     "esbuild": "^0.28.2",
-    "grok-mermaid": "^0.2.2",
     "typescript": "^5.6.0",
     "yaml": "^2.6.0"
   }

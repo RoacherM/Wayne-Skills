@@ -5,7 +5,7 @@
 | skill | 给谁 | 做什么 |
 |---|---|---|
 | `okr` | 用户的日常对话 agent | 记进展、看板、评估、拆解、周计划、结构变更、派工（协议 §2–§8） |
-| `terminal-diagrams` | 任何在终端里回复的 agent（Claude Code / Codex / opencode…） | 画图时不发 ```mermaid，用自带 `scripts/mmd2txt.js`（grok-mermaid 打包进去）渲染成 ```text 框线图；`scripts/mmd-guard.js` 是 Claude Code / Codex 的 Stop hook 兜底；`scripts/setup.js` 一次装好软链和 hook |
+| `terminal-diagrams` | 任何在终端里回复的 agent（Claude Code / Codex / opencode…） | 画图时不发 ```mermaid，用 PATH 上的 `mmd2txt`（独立仓库 RoacherM/mmd2txt，`npm install -g github:RoacherM/mmd2txt`）渲染成 ```text 框线图；`scripts/mmd-guard.js` 是 Claude Code / Codex 的 Stop hook 兜底；`scripts/setup.js` 检查命令并注册 hook |
 
 okr skill 的规则都在 `docs/okr/PROTOCOL.md`，skill 只负责把协议接进对话：先 `okr protocol` 读它，再动手。skill 里只写「本 skill 固定的事」和「意图 → 协议章节」，不复制协议内容。
 

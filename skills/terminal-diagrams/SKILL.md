@@ -1,11 +1,11 @@
 ---
 name: terminal-diagrams
-description: "在终端里给用户看图：流程图、架构图、时序图、状态图、类图、ER 图。用户读的是终端，Mermaid 代码块显示不出来，所以任何要画图、画流程、画调用关系、画数据流、'show me'、'画个图'、'流程是什么'、diagram / flowchart / sequence / architecture 的场合都先加载本 skill，用它自带的 mmd2txt 把 Mermaid 渲染成框线字符图再贴出来。"
+description: "在终端里给用户看图：流程图、架构图、时序图、状态图、类图、ER 图。用户读的是终端，Mermaid 代码块显示不出来，所以任何要画图、画流程、画调用关系、画数据流、'show me'、'画个图'、'流程是什么'、diagram / flowchart / sequence / architecture 的场合都先加载本 skill，用 mmd2txt 把 Mermaid 渲染成框线字符图再贴出来。"
 ---
 
 # terminal-diagrams
 
-用户在终端里读回复，```mermaid 代码块对他只是一堆源码。本 skill 自带 `scripts/mmd2txt.js`（单文件，Node ≥ 20，内置 grok-mermaid 渲染引擎，就是 pi / Grok Build 终端里画图的那套算法），把 Mermaid 源码变成框线字符图。下文 `mmd2txt` 指：PATH 上有就直接用，否则 `node <本 skill 目录>/scripts/mmd2txt.js`。
+用户在终端里读回复，```mermaid 代码块对他只是一堆源码。`mmd2txt`（https://github.com/RoacherM/mmd2txt，内置 lovely-mermaid 渲染引擎，就是 pi / Grok Build 终端里画图的那套算法）把 Mermaid 源码变成框线字符图。它是 PATH 上的一个命令，不在本 skill 里；没有就先装：`npm install -g github:RoacherM/mmd2txt`（Node ≥ 20）。
 
 ## 固定规则
 
@@ -18,7 +18,7 @@ mmd2txt --md reply.md            # 整篇 Markdown 里的 mermaid 块就地换�
 mmd2txt --ansi flow.mmd          # 给用户在 shell 里看的带色版本
 ```
 
-- 支持 flowchart/graph、sequenceDiagram、stateDiagram、classDiagram、erDiagram。饼图、甘特图等不支持，用文本树或表格代替。
+- 支持 flowchart/graph、sequenceDiagram、stateDiagram、classDiagram、erDiagram、pie、mindmap、timeline、gitGraph。甘特图等不支持，用文本树或表格代替。
 - 超宽时工具会自动试另一个方向（LR ↔ TD），仍超宽才报 2。一张图超过 100 列就拆：主路径一张、循环/异常一张。
 - 标签用短语，不写整句；中文标签占两列，更要短。
 - 布局引擎偶尔会让一条线从无关的框上穿过，贴图时用一句话说明这条线的实际去向。
@@ -31,6 +31,7 @@ mmd2txt --ansi flow.mmd          # 给用户在 shell 里看的带色版本
 ## 安装到本机（一次）
 
 ```bash
-node <本 skill 目录>/scripts/setup.js        # 链 ~/.local/bin/mmd2txt，注册两个 agent 的 Stop hook，打印要加进 CLAUDE.md / AGENTS.md 的规则行
+npm install -g github:RoacherM/mmd2txt        # 命令本体
+node <本 skill 目录>/scripts/setup.js        # 检查 mmd2txt 在 PATH 上，注册两个 agent 的 Stop hook，打印要加进 CLAUDE.md / AGENTS.md 的规则行
 node <本 skill 目录>/scripts/setup.js --remove
 ```
