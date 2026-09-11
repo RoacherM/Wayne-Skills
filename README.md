@@ -25,6 +25,17 @@ node ~/.agents/skills/okr/scripts/okr.js skill link   # 软链到 ~/.local/bin/o
 
 另一条路，先要命令再要 skill：`npm install -g github:RoacherM/Wayne-Skills` 把 `okr` 放到 PATH 上，第一次运行时把 skill 复制到 `~/.agents/skills/okr` 并给 Claude Code 建软链 `~/.claude/skills/okr`（只装这两处；之后随包自动更新自己装的那份，`OKR_SKIP_SKILL=1` 关掉；`okr skill install | remove | status` 手动）。不用 npm postinstall 是因为 npm 11 会把带安装脚本的 git 全局包装成指向临时 clone 的软链。`--no-audit`：首次拉包时 npm 的 audit 请求在某些网络下会静默挂几分钟。
 
+### 编剧 skill（只装在本仓库）
+
+13 个编剧 skill 不走插件，也不装到全局，只用 npx 以项目级复制装进本仓库：在本仓库里打开的 Claude Code 读 `.claude/skills/`，Codex 读 `.agents/skills/`。两份拷贝和 `skills-lock.json` 都提交在仓库里，clone 下来就能用。改了 `skills/` 下的编剧 skill 后，在仓库根目录重跑：
+
+```bash
+npx -y --no-audit skills add ./ -y -a claude-code -a codex --copy \
+  -s sw-workflow -s sw-story-structure -s sw-premise-theme -s sw-character-conflict -s sw-dialogue -s sw-scene-craft \
+  -s sw-format-adaptation -s sw-american-case-studies -s sw-japanese-screenwriting -s sw-korean-french-screenwriting \
+  -s sw-industry-business -s chekhov-dramaturgy -s ozu-screenplay-style
+```
+
 ## 全局 AGENTS.md
 
 `global/AGENTS.md` 是给所有 coding agent 的全局指令，一份文件，换机器时 clone 仓库后跑一次就同步：

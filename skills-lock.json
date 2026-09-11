@@ -1,0 +1,70 @@
+{
+  "version": 1,
+  "skills": {
+    "chekhov-dramaturgy": {
+      "source": ".",
+      "sourceType": "local",
+      "computedHash": "fc38c23f1c624c48c98e3d28f0cc7ef5e0d262e29c5c124225a183fd59cf98fc"
+    },
+    "ozu-screenplay-style": {
+      "source": ".",
+      "sourceType": "local",
+      "computedHash": "bcb841e3e971bdf18d44b968765425a3a8c48262a14f16054087607d47daefcb"
+    },
+    "sw-american-case-studies": {
+      "source": ".",
+      "sourceType": "local",
+      "computedHash": "4cc7312af2c2ad5c9fd9588bc3191163311faa1c9ecd57034d8dddea52782804"
+    },
+    "sw-character-conflict": {
+      "source": ".",
+      "sourceType": "local",
+      "computedHash": "d77321552c69e786d35182ee3ad46d0a33b40ba6acb4ae56d9ee22c498664bba"
+    },
+    "sw-dialogue": {
+      "source": ".",
+      "sourceType": "local",
+      "computedHash": "d1a54e0db2c566102578afb5c61f484537bcc8afd2315a245b8da55b0e0fec47"
+    },
+    "sw-format-adaptation": {
+      "source": ".",
+      "sourceType": "local",
+      "computedHash": "254e796465b4ca1c94b9f010d93ec4dcd998606b704729369c6f8c57ea7df329"
+    },
+    "sw-industry-business": {
+      "source": ".",
+      "sourceType": "local",
+      "computedHash": "f31f0a54e0def7a743bd834b8f67d9e569be22b72b6683a803c4f7fa3577897f"
+    },
+    "sw-japanese-screenwriting": {
+      "source": ".",
+      "sourceType": "local",
+      "computedHash": "f15e042cc05a42afe83e766d947e259daa60d859ce15e1112673238fda6873a8"
+    },
+    "sw-korean-french-screenwriting": {
+      "source": ".",
+      "sourceType": "local",
+      "computedHash": "af125371b41781891202f8e1860fffb44d949c0a8f18e5b5acfa0fda067cde92"
+    },
+    "sw-premise-theme": {
+      "source": ".",
+      "sourceType": "local",
+      "computedHash": "48494a6d7bb3b50c61fc30cb4d72f68a0b363cbc0845b5d3b69e9ec84e35ff09"
+    },
+    "sw-scene-craft": {
+      "source": ".",
+      "sourceType": "local",
+      "computedHash": "9c5c58deb3a5d9a742e783460ef2dc3a6e8ad30aed796f8315129230e77dbaba"
+    },
+    "sw-story-structure": {
+      "source": ".",
+      "sourceType": "local",
+      "computedHash": "aff9c1a806ba241fd1446a21bbfaee6d63f3848c89ee21bc89e82fce07a40108"
+    },
+    "sw-workflow": {
+      "source": ".",
+      "sourceType": "local",
+      "computedHash": "3dcdb62a288fcce8cd5d9b0b38413438858b0509c75d3755bca48a68434877fe"
+    }
+  }
+}
