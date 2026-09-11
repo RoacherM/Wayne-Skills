@@ -6,6 +6,7 @@
 |---|---|---|
 | `okr` | 替用户记目标 / KR / 任务 / 习惯的进展，看板、评估、拆解、周计划、派工 | `okr` CLI（本仓库） |
 | `terminal-diagrams` | 用户在终端里读回复时，agent 不发 ```mermaid 源码，而是用 `mmd2txt` 渲染成框线字符图再贴 | [`mmd2txt`](https://github.com/RoacherM/mmd2txt)，`npm install -g github:RoacherM/mmd2txt` |
+| `sw-*`、`chekhov-dramaturgy`、`ozu-screenplay-style` | 13 个编剧 skill：流程调度、结构、前提、人物、对白、场景、格式改编、美日韩法案例、行业、契诃夫、小津。复制自 [jtydhr88/screenwriting-skills](https://github.com/jtydhr88/screenwriting-skills) v1.3.0，清单见 [`skills/README.md`](skills/README.md) | 无 |
 
 ## 安装
 
