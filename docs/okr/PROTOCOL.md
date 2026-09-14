@@ -100,6 +100,15 @@ drop: [t39]                 # 遗留任务退出本周，清空 week
 
 `add` / `move` / `rm` / `apply` 都要 `--confirmed`。`--confirmed` 是「用户点过头」的记录，不是防线：agent 先把要做的事说清楚，用户同意后才传。`edit` 改字段不需要；把 `status` 改成 canceled CLI 不强制，但协议上要用户点头，点头后同样带 `--confirmed` 记入审计。
 
+**怎么写目标和 KR**（Doerr《Measure What Matters》与 Google re:Work 的标准式：「我将 [目标]，以 [KR] 为证」）：
+
+- 目标一句话写终点状态，显著、具体、能激励人，带起止日期；不写「继续」「保持」这类没有终点的词。
+- KR 一句话回答「怎么知道成了」：可验证、有截止，要么达成要么没达成。写结果不写活动：「3 月 7 日前发布客户满意度数据」是 KR，「评估客户满意度」是活动。一个目标 3 到 5 条。
+- 有精确评估方法才写数字，用 `metric`（`--metric 单位:from:to`）；没有就写可验证的状态，用 `milestone`。不要为了显得可衡量而编指标、置信区间、收敛条件。
+- 判断一句话是 KR 还是任务：它描述「要做什么」就是任务，描述「什么会变」才是 KR。要做的事进任务（§6 周计划），不进 KR，也不在 KR 名字里附「事情 / 收益」之类的段落。
+- 只用读者共享的术语：仓库名、本机代号、草稿里的角色名换成事情本身；只解释确实新造的词。
+- 提案顺序：目标 → KR → habit，用户点头后再写；任务留给周计划。
+
 - `okr add --name … --kind objective|metric|milestone|task|habit --parent <id> …`。有 `--parent` 也要显式 `--kind`，只有 `--metric 单位:from:to` 或 `--cadence 3/week` 能推出 kind。
 - objective / metric / milestone 字段：`--area` `--start` `--end` `--weight` `--status active|frozen|canceled`；metric 还有 `--metric 单位:from:to`（或 `--unit` `--from` `--to`），habit 有 `--cadence`。
 - 任务字段：`--priority P0-P3` `--deadline` `--week 2026-W36` `--order` `--dep <id>`（可重复）`--goal` `--accept` `--verify` `--link`。
