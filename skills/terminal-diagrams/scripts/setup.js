@@ -43,7 +43,7 @@ hooks(join(homedir(), '.claude', 'settings.json'), '*', {});
 hooks(join(homedir(), '.codex', 'hooks.json'), '.*', { statusMessage: 'Checking reply for raw Mermaid...' });
 if (!remove) {
   console.log(`
-Add this line to each agent's global instruction file (~/.claude/CLAUDE.md, ~/.codex/AGENTS.md, ~/.config/opencode/AGENTS.md), or link global/AGENTS.md from the wayne-skills repo, which already has it:
+Add this line to each agent's global instruction file (~/.claude/CLAUDE.md, ~/.codex/AGENTS.md) if you want the rule stated there too:
 
 - Diagrams: the user reads in a terminal. Never send a \`\`\`mermaid fence. Use the terminal-diagrams skill: write the diagram to a scratch .mmd file, run \`mmd2txt FILE\` (exit 2 = too wide, split it), paste the output in a \`\`\`text fence. Unsupported kinds fall back to a text tree.
 

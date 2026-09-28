@@ -1,6 +1,6 @@
 ---
 name: terminal-diagrams
-description: "在终端里给用户看图：流程图、架构图、时序图、状态图、类图、ER 图。用户读的是终端，Mermaid 代码块显示不出来，所以任何要画图、画流程、画调用关系、画数据流、'show me'、'画个图'、'流程是什么'、diagram / flowchart / sequence / architecture 的场合都先加载本 skill，用 mmd2txt 把 Mermaid 渲染成框线字符图再贴出来。"
+description: "在终端里给用户看图。回复里要放流程图、架构图、时序图、状态图、类图或 ER 图时先加载本 skill：终端显示不了 Mermaid 代码块，要用 mmd2txt 渲染成框线字符图再贴出来。用户说「画个图」、要 diagram / flowchart / sequence / architecture 图时也用。只要文字说明、伪代码、目录树时不用。"
 ---
 
 # terminal-diagrams
@@ -9,7 +9,7 @@ description: "在终端里给用户看图：流程图、架构图、时序图、
 
 ## 固定规则
 
-- 回复里**永远不出现** ```mermaid 代码块。图先渲染，贴 ```text 块。
+- 回复里不出现 ```mermaid 代码块：图先渲染，贴 ```text 块。
 - 先把 Mermaid 写到临时目录的 `.mmd` 文件，再渲染；不要把源码塞进命令行参数：
 
 ```bash
@@ -26,12 +26,11 @@ mmd2txt --ansi flow.mmd          # 给用户在 shell 里看的带色版本
 
 ## 兜底
 
-`scripts/mmd-guard.js` 是 Claude Code / Codex 的 Stop hook：回复结束时若仍含 mermaid 块，就渲染好交回 agent 重发。看到它的提示照做即可，不要争辩。
+`scripts/mmd-guard.js` 是 Claude Code / Codex 的 Stop hook：回复结束时若仍含 mermaid 块，就渲染好交回 agent 重发。看到它的提示，就用它给的文本图重发。
 
 ## 安装到本机（一次）
 
 ```bash
-npm install -g github:RoacherM/mmd2txt        # 命令本体
 node <本 skill 目录>/scripts/setup.js        # 检查 mmd2txt 在 PATH 上，注册两个 agent 的 Stop hook，打印要加进 CLAUDE.md / AGENTS.md 的规则行
 node <本 skill 目录>/scripts/setup.js --remove
 ```

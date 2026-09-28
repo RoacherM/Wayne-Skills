@@ -1,6 +1,6 @@
 ---
 name: okr
-description: "通过 okr CLI 替用户记录目标 / KR / 任务 / 习惯的进展并做周计划。触发：/okr；用户提到 OKR、KR、目标进度、指标到了多少、任务做完了 / 卡住了 / 提了 PR、习惯打卡、周计划、拆任务、派工、看板 / 进度怎么样；英文 'okr', 'kr progress', 'mark done', 'blocked', 'weekly plan', 'dashboard'。用户没说 OKR 但在汇报某个已登记目标的进展时也用。执行 agent 拿到派工包回写 claim / block / log / submit 也走这里。"
+description: "通过 okr CLI 记录和查询用户的目标、KR、任务、习惯，并做周计划和派工。用户汇报已登记目标或任务的进展（完成、卡住、提了 PR、指标数值、打卡），问进度或看板，要拆任务、做周计划或派工时使用，用户没提 OKR 也算；执行 agent 拿到派工包回写 claim / block / log / submit 也用。/okr 直接进入。"
 ---
 
 # okr
