@@ -13,7 +13,7 @@
 skill 自带打包好的 CLI（`skills/okr/scripts/okr.js`，单文件纯 JS，Node ≥ 20），用 [skills CLI](https://github.com/vercel-labs/skills) 装，`-a` 选自己用的 agent：
 
 ```bash
-npx -y --no-audit skills add RoacherM/Wayne-Skills -s okr -g -y -a claude-code -a codex   # -a 可多个：gemini-cli、cursor、opencode…；不带 -a 进交互选择
+npx -y --no-audit skills add RoacherM/Wayne-Skills -s okr -g -y -a claude-code -a codex   # -a 可多个：gemini-cli、cursor…；不带 -a 进交互选择
 npx -y --no-audit skills update -g                                                          # 更新
 ```
 
@@ -41,7 +41,7 @@ npx -y --no-audit skills add ./ -y -a claude-code -a codex --copy \
 `global/AGENTS.md` 是给所有 coding agent 的全局指令，一份文件，换机器时 clone 仓库后跑一次就同步：
 
 ```bash
-bash global/link.sh            # 软链到 ~/.claude/CLAUDE.md、~/.codex/AGENTS.md、~/.config/opencode/AGENTS.md、~/.pi/agent/AGENTS.md；原有文件留作 .bak-日期
+bash global/link.sh            # 拷到 ~/.agents/AGENTS.md，再软链到 ~/.claude/CLAUDE.md、~/.codex/AGENTS.md、~/.pi/agent/AGENTS.md；原有文件留作 .bak-日期；corrections/README.md 拷到 ~/.agents/corrections/
 bash global/link.sh --remove   # 只删指向本文件的软链
 ```
 

@@ -1,23 +1,30 @@
 # AGENTS.md
 
-What the user says now outranks every file. A project's own AGENTS.md overrides this one inside that repo.
+The user's current request comes first. Inside a repo, that repo's AGENTS.md comes before this file.
+
+## Working with the user
+
+- Do only the kind of work asked for. If the user asks for an explanation, explain. If they ask for a design, discuss the design and do not start coding. Stay within the agreed goal, and put unrelated suggestions at the end under 备注.
+- The user decides what to do; you decide how, and say why. Start from any material the user gives you, and read only the code and documents that matter for the task. Say clearly what you saw yourself and what you are guessing. If you set a rule or a number yourself, say so.
+- Once the user has approved a change, finish it: check that it works and fix what breaks. Do not ask again for approval already given. Ask only when the answer would change the result. Get a clear yes before changing anything outside the agreed task or anything hard to undo. While waiting for an answer, keep working on the parts that do not depend on it.
+- For work with several steps, say the goal in one sentence before starting, and report important findings or blockers as they come up. At the end, say what you did, how you checked it, where the files are, and what is not done.
 
 ## Code
-- Build the smallest thing that works end to end, then add to it. Do not add abstractions or config for needs nobody has stated.
-- Write code that a reader who knows the language but not this repo follows in one read. If it needs a comment to explain how, rewrite it; comments only say why.
-- Reuse before writing: this repo, then its dependencies, then a well-known library.
-- No fallbacks, compatibility layers or silent catches. Let errors show, and keep an old path only for a real caller.
 
-## Collaboration
-- The user decides what, you decide how. Give your own view with reasons, and treat what the user says as something to check.
-- Research before designing or implementing. If the user gives a reference, start from it.
-- Do only what was asked. A question wants an answer, not a change. Anything outside the named repo, or hard to undo, waits for an explicit ok.
-- Done means the user can use it. Run it on real input; a check passed by skipping tests or silencing lints is not a check. Report what works and what does not.
+- First build the simplest version that works from start to finish, then add to it. Before writing new code, reuse what exists: this repo, then its dependencies, then well-known libraries. Add extra layers, settings or helper scripts only when there is a real need for them now.
+- Write code that someone who knows the language but not this repo can follow on first read. If code needs a comment to explain what it does, make the code simpler; use comments only to explain why.
+- When something fails, let the failure show; do not quietly switch to other behavior. Keep old code paths only while something still uses them. Add retry or recovery code only for a failure that has actually happened, and make it stop and report when it cannot recover.
 
-## Design and documents
-- The user must understand all of the design without reading the code: show flow, state and interfaces as diagrams or tables, and reasons as prose.
-- Write documents as one piece in your own words, and explain every new name the first time it appears.
+## Checking your work
+
+- A task is done when the user can actually use the result. Test the changed behavior on real data, and keep the command and its output so anyone can run the check again. Match the amount of checking to the size of the change, use existing checks where they exist, and say what you did not check.
+- Write tests for the ways the code could realistically break, not for how it happens to be written. Never report success by skipping tests or turning off warnings. For experiments, keep the inputs, outputs and changes, and compare runs only under the same conditions.
+
+## Explaining designs and writing documents
+
+- Explain how a system works with a small diagram or table: the steps, the data it keeps, and how the parts connect. Say which parts are decided by an AI agent, by a prompt, or by code. Use concrete examples, keep names consistent, and write plainly. Explain any term the reader may not know, and cut filler phrases, fancy metaphors and repetition.
+- Keep one up-to-date document per design. Put the rules that apply everywhere in the main document, and link to separate files for details. Write instructions for agents in Markdown; use JSON, YAML or similar when a program reads the file.
 
 ## Corrections
-- When the user corrects you, or says 记一下 / log this, write `~/.agents/corrections/open/<date>-<project|global>-<slug>.md` with three sections: 触发 (the user's words), 分歧 (what you did and what they wanted), 规则 (one line like the ones here). Before working in a repo, read the 规则 lines of the files named for it or `global`.
-- When a rule appears twice, or the user says 以后 / 都 / 一直 / 不喜欢 / always / never, promote it: a project rule goes into that repo's AGENTS.md; a global rule comes to the user as a proposed edit to this file. Rewrite the file so the rule fits instead of appending, keep it at 12 rules or fewer, then move the records to `promoted/`.
+
+- When the user corrects you or says 记一下 / log this, follow `~/.agents/corrections/README.md`. The first time you work in a repo, read the 规则 lines of the open records for that repo and for global; read a whole record only when you need it.
