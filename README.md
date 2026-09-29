@@ -1,6 +1,6 @@
 # Wayne Skills
 
-给 coding agent 用的 skill 集合，外加它们依赖的命令行工具。一个仓库，`skills/<name>/SKILL.md` 每个目录一个 skill，用 [`npx skills add`](https://github.com/vercel-labs/skills) 装给 Claude Code / Codex / Copilot / OpenCode / Gemini。
+给 coding agent 用的 skill 集合，外加它们依赖的命令行工具。一个仓库，`skills/<name>/SKILL.md` 每个目录一个 skill，用本仓库的 `bin/wayne-skills.js` 装给本机的 Claude Code / Codex / Pi / Grok / Antigravity。
 
 | skill | 做什么 | 依赖 |
 |---|---|---|
@@ -11,14 +11,22 @@
 
 ## 安装
 
-skill 自带打包好的 CLI（`skills/okr/scripts/okr.js`，单文件纯 JS，Node ≥ 20），用 [skills CLI](https://github.com/vercel-labs/skills) 装，`-a` 选自己用的 agent：
+所有全局 skill（本仓库的和别人仓库的）都用 `bin/wayne-skills.js` 装。它调 [skills CLI](https://github.com/vercel-labs/skills)，但只给本机装了的 agent 建链接：
+
+| agent | 读哪里 | 安装器做什么 |
+|---|---|---|
+| Codex、Pi、Grok | `~/.agents/skills`（Pi、Grok 另外也读自己的目录） | 什么都不用，skills CLI 总会把正本写在这里 |
+| Claude Code | `~/.claude/skills` | 有 `~/.claude` 才传 `-a claude-code`，由 skills CLI 建软链 |
+| Antigravity | `~/.gemini/config/skills`（skills CLI 以为它读 `~/.agents/skills`，不对） | 有 `~/.gemini/antigravity` 才由安装器自己建软链 |
 
 ```bash
-npx -y --no-audit skills add RoacherM/Wayne-Skills -s okr -g -y -a claude-code -a codex   # -a 可多个：gemini-cli、cursor…；不带 -a 进交互选择
-npx -y --no-audit skills update -g                                                          # 更新
+W=~/Desktop/Projects/sides/wayne-skills/bin/wayne-skills.js
+node $W add RoacherM/Wayne-Skills -s okr -s git-story-film   # 装别人的就换 source：owner/repo 或 URL
+node $W update                                             # 按 ~/.agents/.skill-lock.json 全部重装；也可只写几个 skill 名
+node $W remove git-story-film
 ```
 
-`git-story-film` 同样装法：`-s git-story-film`。
+不要直接跑 `npx skills add` 不带 `-a`，也不要跑 `npx skills update -g`：这两种情况下 skills CLI 会把 skill 装给所有「home 下有目录」的 agent，并给每个 agent 新建 `skills` 目录，下次更新又把这些目录当成已安装的 agent，目录越积越多（2026-09-29 清掉过 52 个）。`update` 跳过 `~/.agents/skills` 里是软链的 skill（如 ego-browser，由它自己的安装器管）。
 
 装完 agent 直接跑 `node ~/.agents/skills/okr/scripts/okr.js …`（SKILL.md 里写了）。终端里想直接敲 `okr`：
 

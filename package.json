@@ -6,7 +6,8 @@
   "homepage": "https://github.com/RoacherM/Wayne-Skills#readme",
   "type": "module",
   "bin": {
-    "okr": "./bin/okr.js"
+    "okr": "./bin/okr.js",
+    "wayne-skills": "./bin/wayne-skills.js"
   },
   "files": [
     "bin",
