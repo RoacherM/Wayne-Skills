@@ -6,6 +6,7 @@
 |---|---|---|
 | `okr` | 用户的日常对话 agent | 记进展、看板、评估、拆解、周计划、结构变更、派工（协议 §2–§8） |
 | `terminal-diagrams` | 任何在终端里回复的 agent（Claude Code / Codex…） | 画图时不发 ```mermaid，用 PATH 上的 `mmd2txt`（独立仓库 RoacherM/mmd2txt，`npm install -g github:RoacherM/mmd2txt`）渲染成 ```text 框线图；`scripts/mmd-guard.js` 是 Claude Code / Codex 的 Stop hook 兜底；`scripts/setup.js` 检查命令并注册 hook |
+| `git-story-film` | 给仓库做宣传片的 agent | 从 Git 历史挑真实提交编故事，做约两分钟的手绘动画：`engine/` 画图与动画，`scripts/` 统计 Git、取字体、出帧、渲染 MP4，`examples/raven-story/` 是完整示例片。复制自 [EverMind-AI/Raven](https://github.com/EverMind-AI/Raven)（Apache-2.0，`LICENSE` 随目录）的 commit `e6c0344`（2026-09-28），未改动、未附 evals |
 
 以下 13 个来自 [jtydhr88/screenwriting-skills](https://github.com/jtydhr88/screenwriting-skills)（plugin `screenwriting` v1.3.0，复制自 2026-09-08 的 commit `0657714`），由 19 本编剧书与契诃夫、小津全集蒸馏而成，正文中文、frontmatter 英文。上游许可为「For personal study use」，未附 evals。不用上游的插件装法，只以项目级复制装进本仓库的 `.claude/skills/` 和 `.agents/skills/`（命令见根 README）。与上游唯一的差别：`sw-dialogue`、`sw-korean-french-screenwriting` 的 description 改成 `>-` 块写法，原文未加引号的 `: ` 让 skills CLI 解析失败、装不上。
 
