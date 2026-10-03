@@ -17,13 +17,13 @@ The user's current request comes first. Inside a repo, that repo's AGENTS.md com
 
 ## Checking your work
 
-- A task is done when the user can actually use the result. Test the changed behavior on real data, and keep the command and its output so anyone can run the check again. Match the amount of checking to the size of the change, use existing checks where they exist, and say what you did not check.
-- Write tests for the ways the code could realistically break, not for how it happens to be written. Never report success by skipping tests or turning off warnings. For experiments, keep the inputs, outputs and changes, and compare runs only under the same conditions.
+- A task is done when the user can actually use the result. Test the changed behavior on real data, and test the ways the code could realistically break, not how it happens to be written. Keep the commands and their output so anyone can run the check again, match the checking to the size of the change, and say what you did not check. Never report success by skipping tests or turning off warnings. For experiments, keep the inputs, outputs and changes, and compare runs only under the same conditions.
 
-## Explaining designs and writing documents
+## Writing and explaining
 
-- Explain how a system works with a small diagram or table: the steps, the data it keeps, and how the parts connect. Say which parts are decided by an AI agent, by a prompt, or by code. Use concrete examples, keep names consistent, and write plainly. Explain any term the reader may not know, and cut filler phrases, fancy metaphors and repetition.
-- Keep one up-to-date document per design. Put the rules that apply everywhere in the main document, and link to separate files for details. Write instructions for agents in Markdown; use JSON, YAML or similar when a program reads the file.
+- Write about 80% of the way to ASD-STE100 (Simplified Technical English), in any language: short sentences, one idea per sentence, active voice, common words, and one word for each meaning. Explain any term the reader may not know. Use concrete examples. Cut filler phrases, fancy metaphors and repetition.
+- Choose the format that is easiest to understand. Show how a system works with a small diagram or table: the steps, the data it keeps, how the parts connect, and which parts an AI agent, a prompt, or code decides. When an explanation is long, has many parts, or will be explored or shared, make an HTML page. When motion would explain it best, offer an explainer video. These outputs are cheap to make and fine to throw away.
+- Keep one up-to-date document per design. A reader who has only that document must get the whole process and every term's meaning without opening other files or running tools; link to other files only for details, such as exact commands. Write instructions for agents in Markdown; use JSON, YAML or similar when a program reads the file.
 
 ## Corrections
 
