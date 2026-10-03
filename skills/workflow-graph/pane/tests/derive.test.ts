@@ -47,6 +47,8 @@ test('a delivery made while a question was open counts once the question is answ
   const asked = [fact(0, 'start'), fact(5, 'question', { to: '主控' }), fact(6, 'done')]
   expect(only(asked).state).toBe('question')
   expect(only([...asked, fact(7, 'answer')]).state).toBe('done')
+  // A second question after that delivery is open again
+  expect(only([...asked, fact(7, 'answer'), fact(8, 'question', { to: '主控' })]).state).toBe('question')
   // An answer with no question is ignored
   expect(only([fact(0, 'start'), fact(5, 'answer')]).state).toBe('working')
 })
