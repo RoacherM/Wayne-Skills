@@ -1,0 +1,6 @@
+{
+  "name": "workflow-pane",
+  "version": "0.1.0",
+  "description": "Pane that shows each task's node and state from a workflow-graph log (.workflow/log.jsonl)",
+  "author": { "name": "RoacherM" }
+}
