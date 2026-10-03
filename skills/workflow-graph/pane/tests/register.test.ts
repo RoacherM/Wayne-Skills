@@ -24,7 +24,10 @@ function stubSession(on: any, log: () => string | null) {
   on('session.start', () => ({ cwd: '/work' }))
   on('fs.exists', () => ({ value: log() !== null }))
   on('fs.stat', () => ({ value: { kind: 'file', size: ++reads, mtimeMs: reads, isLink: false } }))
-  on('fs.read', () => ({ value: log() }))
+  on('fs.read', () => {
+    const text = log()
+    return text === 'EACCES' ? { deny: 'EACCES .workflow/log.jsonl' } : { value: text }
+  })
   return shown
 }
 
@@ -64,4 +67,17 @@ test('a missing log is said plainly', async ($, on) => {
   const ui = await $.ui.mount(PANE)
   expect(await ui.find({ type: 'Text', text: /这里还没有 .workflow\/log.jsonl/ })).toBeDefined()
   expect(shown.status.at(-1)).toBe('no .workflow/log.jsonl here')
+})
+
+test('a read error shows above the table and keeps the last rows', async ($, on) => {
+  const clock = mock.clock(on, { now: Date.parse(at(30)) })
+  let text = fact(0, 'start')
+  const shown = stubSession(on, () => text)
+  await start($)
+  text = 'EACCES'
+  await clock.advance(5000)
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /EACCES/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: 'B7' })).toBeDefined()
+  expect(shown.status.at(-1)).toContain('EACCES')
 })

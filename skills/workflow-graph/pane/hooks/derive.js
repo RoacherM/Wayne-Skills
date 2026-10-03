@@ -36,6 +36,9 @@ export function parseLog(text) {
     const missing = REQUIRED.filter((k) => typeof fact?.[k] !== 'string' || fact[k] === '')
     if (missing.length) return fail('missing ' + missing.join(', '))
     if (!EVENTS.has(fact.event)) return fail('unknown event ' + fact.event)
+    if (fact.event === 'gate' && fact.result !== 'pass' && fact.result !== 'fail') {
+      return fail('gate result must be pass or fail')
+    }
     const timeMs = Date.parse(fact.time)
     if (Number.isNaN(timeMs)) return fail('bad time ' + fact.time)
     facts.push({ ...fact, timeMs, lineNo: i + 1 })
@@ -54,7 +57,7 @@ function stateOf(fact) {
     case 'blocked':
       return { state: 'blocked', node: fact.node }
     case 'gate':
-      return { state: fact.result === 'fail' ? 'gate-fail' : 'gate-pass', node: fact.node, gate: fact.gate }
+      return { state: fact.result === 'pass' ? 'gate-pass' : 'gate-fail', node: fact.node, gate: fact.gate }
     case 'return':
       return { state: 'fixing', node: fact.to ?? fact.node }
     case 'handoff':
@@ -64,15 +67,13 @@ function stateOf(fact) {
   }
 }
 
-// The fact that decides the state: the last one, except that an answer goes back to what held
-// before the question it answers.
+// SKILL.md section 6, step 2: an unanswered question decides; otherwise the latest fact that is
+// neither a question nor an answer does.
 function decidingFact(facts) {
-  let i = facts.length - 1
-  while (i >= 0 && facts[i].event === 'answer') {
-    while (i >= 0 && facts[i].event !== 'question') i--
-    i--
-  }
-  return i >= 0 ? facts[i] : null
+  const asked = facts.filter((f) => f.event === 'question' || f.event === 'answer')
+  const lastAsked = asked[asked.length - 1]
+  if (lastAsked?.event === 'question') return lastAsked
+  return facts.findLast((f) => f.event !== 'question' && f.event !== 'answer') ?? null
 }
 
 export function deriveTasks(facts, nowMs) {
@@ -89,7 +90,7 @@ export function deriveTasks(facts, nowMs) {
     const state = deciding ? stateOf(deciding) : { state: 'working', node: last.node }
     const returns = list.filter((f) => f.event === 'return')
     const rounds = Math.max(0, ...returns.map((f) => Number(f.round) || 0))
-    const cap = returns.length ? returns[returns.length - 1].cap : undefined
+    const cap = returns.findLast((f) => f.cap !== undefined)?.cap
     const startedMs = list[0].timeMs
     const endMs = state.state === 'finished' ? deciding.timeMs : nowMs
     rows.push({ task, ...state, rounds, cap, startedMs, cycleMs: endMs - startedMs, lastMs: last.timeMs })

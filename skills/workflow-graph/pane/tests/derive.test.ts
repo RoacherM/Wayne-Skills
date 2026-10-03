@@ -43,8 +43,30 @@ test('an answer goes back to the state before its question', () => {
   expect(only(inFix).state).toBe('fixing')
 })
 
-test('facts are ordered by time, not by line', () => {
+test('a delivery made while a question was open counts once the question is answered', () => {
+  const asked = [fact(0, 'start'), fact(5, 'question', { to: '主控' }), fact(6, 'done')]
+  expect(only(asked).state).toBe('question')
+  expect(only([...asked, fact(7, 'answer')]).state).toBe('done')
+  // An answer with no question is ignored
+  expect(only([fact(0, 'start'), fact(5, 'answer')]).state).toBe('working')
+})
+
+test('facts are ordered by time, then by their place in the file', () => {
   expect(only([fact(5, 'done'), fact(0, 'start')]).state).toBe('done')
+  expect(only([fact(5, 'start'), fact(5, 'done')]).state).toBe('done')
+  expect(only([fact(5, 'done'), fact(5, 'start')]).state).toBe('working')
+})
+
+test('the cap comes from the latest return that has one', () => {
+  const row = only([fact(0, 'return', { to: '修复', round: 1, cap: 3 }), fact(5, 'return', { to: '修复', round: 2 })])
+  expect(row.rounds).toBe(2)
+  expect(row.cap).toBe(3)
+})
+
+test('facts after finish reopen the task', () => {
+  const row = only([fact(0, 'start'), fact(10, 'finish'), fact(20, 'start')], 45)
+  expect(row.state).toBe('working')
+  expect(row.cycleMs).toBe(45 * 60_000)
 })
 
 test('cycle runs from the first fact to finish, or to now', () => {
@@ -60,6 +82,14 @@ test('bad lines are reported with their line numbers and the good lines still co
   expect(errors.map((e) => e.line)).toEqual([2, 3, 4, 5])
   expect(errors[1].message).toBe('missing node, by')
   expect(errors[2].message).toBe('unknown event teleport')
+})
+
+test('a gate fact needs result pass or fail', () => {
+  const { facts, errors } = parseLog(
+    [fact(0, 'gate', { gate: 'G1', result: 'pass' }), fact(1, 'gate', { gate: 'G1' }), fact(2, 'gate', { gate: 'G1', result: 'Fail' })].join('\n'),
+  )
+  expect(facts.length).toBe(1)
+  expect(errors.map((e) => e.message)).toEqual(['gate result must be pass or fail', 'gate result must be pass or fail'])
 })
 
 test('active tasks first, oldest first; finished after, most recently finished first', () => {
