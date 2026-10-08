@@ -1,0 +1,16 @@
+{
+  "env": {
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "DISABLE_TELEMETRY": "1",
+    "DISABLE_ERROR_REPORTING": "1",
+    "DISABLE_BUG_COMMAND": "1"
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "bash ~/.claude/statusline.sh",
+    "refreshInterval": 60
+  },
+  "autoCompactWindow": 400000,
+  "skipDangerousModePermissionPrompt": true,
+  "remoteControlAtStartup": false
+}

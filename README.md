@@ -59,6 +59,22 @@ bash global/link.sh --remove   # 只删指向本文件的软链
 
 写法按 Anthropic 的 Fable 5.1 提示指南和 OpenAI 的 GPT-6 Astra 模型指南：两代模型都会严格照做，所以只写 harness 没说的事（回复语言、改动范围、密钥、终端画图、git 边界），不重复系统提示里已有的段落，不写互相矛盾的规则。Claude Code 自带的 Fable 5.1 提示块已覆盖进度汇报、并行调用、完成整个任务、交付范围、排版密度，这些不再写。
 
+## Claude Code 设置
+
+`global/claude/` 只放自己改过的 Claude Code 设置，换机器后跑一次就同步：
+
+| 文件 | 内容 |
+|---|---|
+| `settings.json` | 自动 compact 窗口 400k；关遥测、错误上报、`/bug`、非必要流量；状态栏；跳过危险模式确认；启动时不开远程控制 |
+| `statusline.sh` | 状态栏：模型 · 目录 · git · 上下文占比 · 5h/7d 限额和重置倒计时，依赖 `jq` |
+
+```bash
+bash global/claude/apply.sh            # 把 settings.json 合并进 ~/.claude/settings.json（原文件留作 .bak-时间），再拷 statusline.sh；重启 Claude Code 生效
+bash global/claude/apply.sh --check    # 只看哪些键不同，不改文件
+```
+
+合并只覆盖仓库里列出的键，`env` 里的其他变量保留。模型列表、`ANTHROPIC_*`、`CLAUDE_CODE_MODEL_CAPABILITIES`、`model`、`effortLevel` 由 magpie 写，herdr 的 `SessionStart` 钩子由 herdr 写，都不放进仓库。在本机改了这几项后，同步改仓库里的 `settings.json` 再提交。
+
 ## okr
 
 目标与任务追踪，终端里看，agent 也能读写。事件进，视图出。用法见 [`docs/okr/README.md`](docs/okr/README.md)，设计见 [`docs/okr/DESIGN.md`](docs/okr/DESIGN.md)，agent 读写规则见 [`docs/okr/PROTOCOL.md`](docs/okr/PROTOCOL.md)（装好后 `okr protocol` 直接打印）。
