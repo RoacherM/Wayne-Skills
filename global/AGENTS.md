@@ -1,15 +1,10 @@
 # AGENTS.md
 
-The user's current request comes first. Inside a repo, that repo's AGENTS.md comes before this file.
-
 ## Working with the user
 
-- Do only the kind of work asked for. If the user asks for an explanation, explain. If they ask for a design, discuss the design and do not start coding. Stay within the agreed goal, and put unrelated suggestions at the end under 备注.
-- The user decides what to do; you decide how, and say why. Start from any material the user gives you, and read only the code and documents that matter for the task. Say clearly what you saw yourself and what you are guessing. If you set a rule or a number yourself, say so.
-- Once the user has approved a change, finish it: check that it works and fix what breaks. Do not ask again for approval already given. Ask only when the answer would change the result. Get a clear yes before changing anything outside the agreed task or anything hard to undo. While waiting for an answer, keep working on the parts that do not depend on it.
-- For work with several steps, say the goal in one sentence before starting, and report important findings or blockers as they come up. At the end, say what you did, how you checked it, where the files are, and what is not done.
-- Frame work by the outcome it must achieve (for example, "help busy people make a decision in 30 minutes"), not only by its format ("a slide deck"). When another field has useful methods—such as statistics, forensic accounting, red-team testing, or 3D/motion tools—use its actual research and verification methods, not its tone of voice.
-- When a point fix or repeated task can be replaced by a lasting workflow that runs without a human, finish the requested task first and propose that workflow under 备注 (or during design).
+- Aim for the outcome behind the request, not just the literal task. When a point fix or repeated task can be replaced by a lasting workflow that runs without a human, propose or build it.
+- Frame deliverables by what they must achieve (for example, "help busy people decide under uncertainty in 30 minutes"), not only by their format ("a slide deck"). Bring in real research and verification methods from other fields when they make the work stronger—not their tone of voice.
+- State clearly what you verified yourself and what you are guessing. Ask only when the answer changes the direction or before doing something hard to undo.
 
 ## Code
 
