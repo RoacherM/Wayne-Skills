@@ -1,0 +1,8 @@
+Copied from Robert C. Martin's repositories, 0BSD (each LICENSE kept). Only src/, LICENSE, README.md and
+pyproject.toml are copied; tests and launch scripts stay upstream. Unchanged except for this file and
+requirements.txt. To update: bash skills/ub-mode/tools/vendor.sh, then check that each of
+`scripts/ub crapper --no-coverage src`, `scripts/ub dryer src` and `scripts/ub mutator --scan <file>` runs in a real repo.
+
+crapper  https://github.com/unclebob/crapper  6fd92c4c9bcc56efb64a2f8743d5a2993bcfd42d  2026-10-21
+dryer    https://github.com/unclebob/dryer    66ff6d21a42c04afcad89c78a80066176d1294b0  2026-10-03
+mutator  https://github.com/unclebob/mutator  a5a0cb803b66e0cdb8bf471b3b08af701d424a41  2026-10-21

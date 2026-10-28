@@ -1,0 +1,60 @@
+#!/bin/sh
+# ub — run a vendored quality tool: crapper (CRAP score), dryer (duplication) or mutator (mutation tests).
+#   ub <crapper|dryer|mutator> [tool args…]    run in the current directory, like the upstream ./crapper
+#   ub setup                                    build the environment now (otherwise the first run does it)
+#   ub where                                    print the environment path and the pinned upstream commits
+#
+# The three tools are copied into ../tools (see tools/VENDOR). They share one Python environment, built once
+# with uv in $UB_HOME (default ~/.cache/ub-mode). It lives outside the skill folder, so reinstalling the skill
+# keeps it; a stamp of the vendored sources makes the next run rebuild it after the tools change.
+set -eu
+HERE=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
+TOOLS=$(CDPATH= cd -- "$HERE/../tools" && pwd)
+UB_HOME=${UB_HOME:-"${XDG_CACHE_HOME:-$HOME/.cache}/ub-mode"}
+VENV="$UB_HOME/venv"
+PY="$VENV/bin/python"
+
+stamp() {
+  # Changes whenever a vendored file or the pinned dependency list changes.
+  (cd "$TOOLS" && find . -type f \( -name '*.py' -o -name 'pyproject.toml' -o -name 'requirements.txt' \) | LC_ALL=C sort | xargs cat) |
+    { command -v shasum >/dev/null && shasum -a 256 || sha256sum; } | cut -c1-16
+}
+
+build() {
+  command -v uv >/dev/null || { echo "ub: needs uv (https://docs.astral.sh/uv/): brew install uv, or pipx install uv" >&2; exit 1; }
+  echo "ub: building $VENV (one time, a few seconds)" >&2
+  rm -rf "$VENV" "$UB_HOME/src"
+  mkdir -p "$UB_HOME/src"
+  # Build from a copy: setuptools writes build/ and *.egg-info next to the sources it builds.
+  cp -R "$TOOLS/crapper" "$TOOLS/dryer" "$TOOLS/mutator" "$UB_HOME/src/"
+  uv venv --quiet --python '>=3.11,<3.15' "$VENV" >&2
+  uv pip install --quiet --python "$PY" -r "$TOOLS/requirements.txt" \
+    "$UB_HOME/src/crapper" "$UB_HOME/src/dryer" "$UB_HOME/src/mutator" >&2
+  rm -rf "$UB_HOME/src"
+  stamp >"$VENV/.ub-stamp"
+}
+
+ready() {
+  [ -x "$PY" ] && [ -f "$VENV/.ub-stamp" ] && [ "$(cat "$VENV/.ub-stamp")" = "$(stamp)" ]
+}
+
+cmd=${1:-}
+case "$cmd" in
+  crapper|dryer|mutator)
+    shift
+    ready || build
+    exec "$PY" -m "$cmd" "$@"
+    ;;
+  setup)
+    build
+    echo "ub: ready ($("$PY" --version))"
+    ;;
+  where)
+    echo "env: $VENV"
+    cat "$TOOLS/VENDOR"
+    ;;
+  *)
+    sed -n '2,5p' "$0" | sed 's/^# \{0,1\}//' >&2
+    exit 64
+    ;;
+esac
