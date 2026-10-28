@@ -34,6 +34,7 @@ You choose when to run them, on what, and what to do with the result. These fact
 - `--changed` reads `git status`: uncommitted files only, and it scores every function in them. Judge the functions you touched.
 - dryer flags short look-alikes (two 3-line constructors score 1.0). Merge when the two carry one decision; keep them apart when they only share shape.
 - mutator runs the tests once per mutant and skips lines no test covers (reported as UNCOVERED). Point it at the files you changed. A survivor names a behaviour no test pins.
+- mutator runs each mutant in a worker folder of symlinks to the project. A test that finds the source through a resolved path (Python `Path(__file__).resolve()` on `sys.path`, an absolute import root) loads the real, unmutated file, and every mutant survives. When everything survives, apply one mutant by hand and run the tests: if they fail, fix the path (e.g. pytest `pythonpath = ["src"]`), not the tests.
 - For Python, the tools run the project's `.venv/bin/python` (else `python3`) and install `coverage`/`pytest` into it when missing. With no project venv on a Homebrew Python that install fails and coverage reads 0%: create `.venv` first.
 - For TypeScript, coverage comes from `npm run coverage`, Vitest `--coverage` (it may add `@vitest/coverage-v8` to `node_modules`), or `c8` around `npm test`.
 - The tools write `.metrics/` and `target/coverage/`. Keep them out of commits (`.git/info/exclude`), and keep `package.json` and lockfiles unchanged.
