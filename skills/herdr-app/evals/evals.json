@@ -2,7 +2,7 @@
   {
     "id": "split-current-pane-not-tab",
     "prompt": "在 herdr app 里把当前窗口开一个分屏，用 epi + deepseek-flash 测试一下会话 01a1a98a-f42b-7416-b545-b293a25d0a36",
-    "expected_output": "加载 herdr skill，用 $HC_TERMINAL_ID 在 herdr-app ls 中反查当前 MY_PANE（不用 focused_pane、不用旧版 herdr CLI），执行 herdr-app do pane.split --direction right --pane \"$MY_PANE\" 同 Tab 向右分屏（绝不调 tab.new），再通过 hc send 在子分屏交互式启动 epi --approve --model deepseek/deepseek-flash"
+    "expected_output": "加载 herdr-app skill，用 $HC_TERMINAL_ID 在 herdr-app ls 中反查当前 MY_PANE（不用 focused_pane、不用旧版 herdr CLI），执行 herdr-app do pane.split --direction right --pane \"$MY_PANE\" 同 Tab 向右分屏（绝不调 tab.new），再通过 hc send 在子分屏交互式启动 epi --approve --model deepseek/deepseek-flash"
   },
   {
     "id": "no-parent-hc-send-clobber",

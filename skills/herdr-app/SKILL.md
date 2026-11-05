@@ -1,17 +1,22 @@
 ---
-name: herdr
+name: herdr-app
 description: >
-  在 Herdr.app 中使用同 Tab 分屏（herdr-app + hc）执行「开发模式（左 1 + 右 3：Orchestrator / Worker / Reviewer / Terminal）」与「测试模式」的工作流；验证与审查规则沿用 pstack。
-  当用户提到 Herdr、herdr-app、hc、分屏、开个分屏、子窗口测试、分屏 review、右边窗口跑一下，或在 Herdr.app 中需要协同多窗口/终端开发与实测时使用。
+  在 Herdr.app 中使用同 Tab 分屏（herdr-app + hc）执行「开发模式（左 1 + 右 3：Orchestrator / Worker / Reviewer / Terminal）」与「测试模式」的最佳实践工作流，结合批判性思维（先立假设、穿透单一绿灯、证据先行、保护注意力）。
+  不管旧版终端界面 `herdr`（`HERDR_ENV=1`，官方 skill 也叫 herdr）。
+  当用户提到 Herdr.app、herdr-app、hc、分屏、开个分屏、子窗口测试、分屏 review、右边窗口跑一下，或在 Herdr.app 中需要协同多窗口/终端开发与实测时使用。
 ---
 
 # Herdr.app 分屏开发与批判性实测工作流（`herdr-app` + `hc`）
 
-在 **Herdr.app**（`__CFBundleIdentifier=dev.herdr.app`）中，用同 Tab 分屏把**思考控场、编码实现、对抗审查、真实终端测试**放在同一个视野内。命令全集可通过 `herdr-app --skill` 与 `hc --skill` 查看；本文件固定分屏铁律、四角色布局与批判性验证流程。
+在 **Herdr.app**（`__CFBundleIdentifier=dev.herdr.app`）中，用同 Tab 分屏把**思考控场、编码实现、对抗审查、真实终端测试**放在同一个视野内。
 
-两条底线：
-- **同一个视野**：子任务固定在当前 Tab 内分屏（`pane.split`），不开隐藏的新 Tab（`tab.new`）。
-- **外包执行，不移交判断**：验证和审查按 pstack 的规则做，见第 3 节。
+**先确认在 Herdr.app 里**：`test -n "${HC_TERMINAL_ID:-}"`。为空就停下，告诉用户当前不在 Herdr.app 管理的终端里，不要去操作别人的会话。
+
+**命令以官方手册为准**：动手前先跑 `herdr-app --skill`（窗口、分屏）和 `hc --skill`（终端、Agent、等待），它们随安装的版本更新。本文件只写手册里没有的东西：我的布局、角色和铁律。两者冲突时，以手册为准，并告诉用户这里过时了。
+
+核心原则（结合 Addy Osmani《Critical thinking when agents do the work》）：
+- **人只有一双眼睛（One Pair of Eyes）**：绝不把子任务丢进隐藏的新 Tab（`tab.new`）。固定在**当前 Tab 内分屏**（`pane.split`），省去来回切 Tab 的调度税（Orchestration Tax）。
+- **外包执行，不移交判断（Cognitive Offloading, Not Surrender）**：派单前先立假设与证伪条件，用独立 `Reviewer` 找盲区、用纯 `Terminal` 跑真实命令抓报错，最后由 `Orchestrator` 替用户把输出收敛到真正需要人拍板的隐式决策上。
 
 ---
 
@@ -128,24 +133,22 @@ eval "$(herdr-app ls | node -e '
 
 ---
 
-## 3. 四角色协同流程
+## 3. 批判性思维四角色协同流程（省注意力 + 真实验证）
 
-判断规则不在这里重写，直接用 pstack。pstack 的 skill 只能手动调用，所以按路径读 `~/.agents/skills/<name>/SKILL.md`。本节只写这些规则在分屏里落在哪：
+### 第一步：`Orchestrator` 派单前（先立假设，传一手材料）
+1. **先立假设与证伪条件（Formulate a Hypothesis & Falsifier）**：明确预期结果，以及*“什么反例或报错出现就说明我们错了？”*
+2. **预先定义“什么算验证通过”（Define Verified Upfront）**：以 `Terminal` 跑出的真实退出码、DB 记录、文件 sha256 或边界集统计为准，绝不把“代码/文档看起来写完了”当完成。
+3. **传一手路径与原始标识（No Summary Telephone）**：给 `Worker` 和 `Reviewer` 传精确文件路径、行号、commit 或原始会话 ID，不传二道浓缩摘要。
 
-| 步骤 | 谁做 | 按哪个 pstack skill |
-|---|---|---|
-| 派单前：复述目标，写下假设、反例和「什么算通过」 | Orchestrator | `in-your-own-words`、`principle-prove-it-works` |
-| 实现 | Worker | `poteto-mode` 里匹配的 playbook |
-| 实测：在真实环境或 `/tmp` 空目录跑命令，看退出码和产物 | Terminal（纯 zsh） | `principle-prove-it-works`；代码量具用 `ub-mode` |
-| 独立证伪：只留跑出来能证实的问题 | Reviewer（换一个模型） | `interrogate` 给审查者的 brief |
-| 汇报：证据在前，列出等用户拍板的事 | Orchestrator | `ketchup` |
-
-分屏特有的三条：
-1. 给 Worker 和 Reviewer 传一手材料：精确路径、行号、commit，不传二手摘要。
-2. 子 Agent 把结果写进 `/tmp/herdr-<task>/worker.md` 或 `review.md`，然后结束回合。**不要**让它 `hc send` 回主窗口（铁律 3）。
-3. Orchestrator 用 `hc wait` 等子 Agent 结束，再读文件：
+### 第二步：`Worker` 实现 + `Terminal` 实测 + `Reviewer` 独立证伪
+1. **`Worker`（右上）**：完成代码或独立脚本编写，记录改动点与隐含假设。
+2. **`Terminal`（右下）**：在真实环境或隔离目录（如 `/tmp`）直接跑脚本/测试，检验是否真的能跑通（例如实测独立文档脚本能否在无仓库依赖下跑出 `EXIT:0`）。
+3. **`Reviewer`（右中）**：在独立上下文中启动（如 `epi --approve --model deepseek/deepseek-flash --thinking high` 或 `factory/gpt-6.1-sol`），执行：
+   - **穿透单一绿灯（What Green Proved vs. Missed）**：单条样本跑通后，追问全量分布或边界条件下会不会失效；
+   - **盲区与隐式决策自检（Did I miss anything?）**：挑出实现里替用户暗自做掉的决定（默认值、被吞掉的报错、兼容性取舍），写入 `/tmp/herdr-<task>/review.md`。
 
 ```bash
+# Orchestrator 等待 Worker 或 Reviewer 回合结束
 while true; do
   WAIT_OUT=$(hc wait "$REVIEWER_TERM" 2>&1)
   echo "$WAIT_OUT"
@@ -154,3 +157,10 @@ while true; do
   fi
 done
 ```
+
+### 第三步：`Orchestrator` 回收与汇报（证据先行，守护用户注意力）
+`Orchestrator` **先核对 `Terminal` 的真实输出与 `Reviewer` 的原始证据**，再向用户做高密度汇报：
+1. **结论与实测证据（Evidence First）**：`Terminal` 跑了什么命令、退出码与关键数字/产物路径是什么。
+2. **假设 vs 实测（Hypothesis vs. Reality）**：实测抓到了什么报错（如 SQL 类型转换问题）、反例或线上差异，是否已闭环修复。
+3. **绿灯边界（What Was Proven vs. Unchecked）**：本次测试实际覆盖了什么，**还有哪 1–2 个边界没测到**。
+4. **隐含决策与需拍板项（Accountability Focus）**：把代码/方案暗自替你决定的地方单独拎出来，让你只把注意力花在真正需要你签字负责的判断上。

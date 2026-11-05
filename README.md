@@ -8,7 +8,8 @@
 |---|---|---|
 | `terminal-diagrams` | 用户在终端里读回复时，agent 不发 ```mermaid 源码，而是用 `mmd2txt` 渲染成框线字符图再贴 | [`mmd2txt`](https://github.com/RoacherM/mmd2txt)，`npm install -g github:RoacherM/mmd2txt` |
 | `ub-mode` | 写代码、改代码、审代码时用三件外部量具打分：crapper（复杂度×覆盖率，CRAP < 10）、dryer（结构重复）、mutator（变异测试）。工具是 Uncle Bob 的 [crapper](https://github.com/unclebob/crapper) / [dryer](https://github.com/unclebob/dryer) / [mutator](https://github.com/unclebob/mutator)（0BSD），源码内置在 `skills/ub-mode/tools/`，`scripts/ub` 首次运行用 uv 在 `~/.cache/ub-mode` 建一个共用环境 | [uv](https://docs.astral.sh/uv/)、Python 3.11–3.14（uv 会自己下载） |
-| `herdr` | 在 Herdr.app 里用同 Tab 分屏（`herdr-app` + `hc`）跑开发模式（Orchestrator / Worker / Reviewer / Terminal）和测试模式；验证与审查规则引用 pstack | Herdr.app（`herdr-app`、`hc`）、pstack |
+| `herdr-app` | 在 Herdr.app 里用同 Tab 分屏（`herdr-app` + `hc`）跑开发模式（Orchestrator / Worker / Reviewer / Terminal）和测试模式：先立假设、穿透单一绿灯、证据先行、保护注意力 | Herdr.app（`herdr-app`、`hc`） |
+| `deslop` | 给已有中文文本去 AI 味：删空话、模板句、翻译腔，理顺主语、术语和段落，保留原意和事实 | 无 |
 
 ## 全局 skill 清单
 
@@ -16,10 +17,10 @@
 
 | 类别 | `~/.agents/skills/<name>` 是什么 | 怎么更新 | 现在有 |
 |---|---|---|---|
-| `links` | 软链到本地仓库（相对路径指本仓库，`~/` 指 home） | 改仓库就生效 | 本仓库 3 个、storyforge |
-| `remote` | skills CLI 从 GitHub / 网站拷来的副本 | `update` | skill-creator、lark-doc、lark-shared、[pstack](https://github.com/cursor/plugins/tree/main/pstack) 58 个（Claude Code 适配版） |
+| `links` | 软链到本地仓库（相对路径指本仓库，`~/` 指 home） | 改仓库就生效 | 本仓库 4 个、storyforge |
+| `remote` | skills CLI 从 GitHub / 网站拷来的副本 | `update` | skill-creator、lark-doc、lark-shared、[pstack](https://github.com/cursor/plugins/tree/main/pstack) 里的 unslop、technical-writing、ketchup、bro（Claude Code 适配版） |
 | `external` | 别的工具自己装的（值写着装法） | 那个工具自己管 | rex、wayne-herdr-mods |
-| `files` | 不是 skill：从 GitHub 拉一个目录放到指定位置，给 skill 引用自身目录以外的文件用 | `update` | `~/.agents/docs`（pstack 的 Claude Code 适配说明和指南） |
+| `files` | 不是 skill：从 GitHub 拉一个目录放到指定位置，给 skill 引用自身目录以外的文件用 | `update` | `~/.agents/docs/harness`（pstack 的 Claude Code 适配说明，technical-writing 要读） |
 
 ```bash
 W=~/Projects/sides/wayne-skills/bin/wayne-skills.js
