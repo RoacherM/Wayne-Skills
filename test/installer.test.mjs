@@ -87,3 +87,16 @@ test('the repo manifest only links skills that exist in the repo', () => {
     if (!p.startsWith('~/')) assert.ok(existsSync(join(REPO, p, 'SKILL.md')), p);
   }
 });
+
+test('sync fetches a files entry only when its destination is missing', () => {
+  const home = fresh();
+  const calls = [];
+  const fetchFiles = (spec, dest) => {
+    calls.push([spec, dest]);
+    mkdirSync(dest, { recursive: true });
+  };
+  const manifest = { files: { '~/.agents/docs': 'o/r/docs' } };
+  sync(home, manifest, { repo: fresh(), fetchFiles });
+  sync(home, manifest, { repo: fresh(), fetchFiles });
+  assert.deepEqual(calls, [['o/r/docs', join(home, '.agents/docs')]]);
+});

@@ -8,15 +8,18 @@
 //   links    ~/.agents/skills/<name> is a symlink to a local checkout (this repo, or another repo). Edits are live.
 //   remote   installed as a copy by the skills CLI (`npx skills add <source> -s <name>`); `update` refreshes it.
 //   external installed and refreshed by another tool (the value says which command); we only check it is there.
+//   files    a folder copied from GitHub ("owner/repo/path") to a local path, for files that skills reference
+//            outside their own folder (pstack skills read ../../docs, so ~/.agents/docs). `update` refreshes it.
 //
 // Never run `skills add` without -a or `skills update -g`: both install to every agent whose home directory
 // exists and create that agent's skills directory, so each run leaves more stray directories in ~.
 import { spawnSync } from 'node:child_process';
 import {
-  existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync,
+  cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync,
+  writeFileSync,
 } from 'node:fs';
-import { homedir } from 'node:os';
-import { isAbsolute, join, relative } from 'node:path';
+import { homedir, tmpdir } from 'node:os';
+import { dirname, isAbsolute, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const REPO = fileURLToPath(new URL('..', import.meta.url));
@@ -75,6 +78,27 @@ function skillsCli(args) {
 /** Copy skills from a remote source into ~/.agents/skills. `-a codex` writes only that copy; we link agents ourselves. */
 const install = (source, names) => skillsCli(['add', source, ...names.flatMap((n) => ['-s', n]), '-g', '-y', '-a', 'codex']);
 
+/** Replace `dest` with the folder `owner/repo/path` from the repo's default branch (sparse, shallow clone). */
+export function fetchDir(spec, dest) {
+  const [owner, repo, ...rest] = spec.split('/');
+  const sub = rest.join('/');
+  const tmp = mkdtempSync(join(tmpdir(), 'wayne-skills-'));
+  const git = (...args) => {
+    const r = spawnSync('git', args, { stdio: ['ignore', 'ignore', 'inherit'] });
+    if (r.status !== 0) throw new Error(`git ${args.join(' ')} 失败（退出码 ${r.status}）`);
+  };
+  try {
+    git('clone', '-q', '--depth', '1', '--filter=blob:none', '--sparse', `https://github.com/${owner}/${repo}.git`, tmp);
+    git('-C', tmp, 'sparse-checkout', 'set', sub);
+    if (!existsSync(join(tmp, sub))) throw new Error(`${spec} 不存在`);
+    rmSync(dest, { recursive: true, force: true });
+    mkdirSync(dirname(dest), { recursive: true });
+    cpSync(join(tmp, sub), dest, { recursive: true });
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
 export const readManifest = (path = MANIFEST) => JSON.parse(readFileSync(path, 'utf8'));
 
 const lockPath = (home) => join(home, '.agents', '.skill-lock.json');
@@ -89,7 +113,7 @@ const stampOf = (d) => d.toISOString().slice(0, 19).replace(/[-:]/g, '').replace
  * Make ~/.agents/skills match the manifest. Real directories that must go are moved to ~/.agents/backup/sync-<time>,
  * never deleted. With `prune`, skills not in the manifest are removed too. Returns what it did, one line each.
  */
-export function sync(home, manifest, { repo = REPO, prune = false, now = new Date(), installRemote = install } = {}) {
+export function sync(home, manifest, { repo = REPO, prune = false, now = new Date(), installRemote = install, fetchFiles = fetchDir } = {}) {
   const root = join(home, '.agents', 'skills');
   const backup = join(home, '.agents', 'backup', `sync-${stampOf(now)}`);
   const log = [];
@@ -129,6 +153,13 @@ export function sync(home, manifest, { repo = REPO, prune = false, now = new Dat
   }
 
   for (const [name, how] of Object.entries(external)) if (!lstat(join(root, name))) log.push(`缺 ${name}：跑 ${how}`);
+
+  for (const [dest, spec] of Object.entries(manifest.files ?? {})) {
+    const path = resolvePath(home, repo, dest);
+    if (existsSync(path)) continue;
+    fetchFiles(spec, path);
+    log.push(`${path} <- ${spec}`);
+  }
 
   if (prune) {
     for (const name of readdirSync(root)) {
@@ -171,8 +202,8 @@ function sourceOf(entry) {
   return entry.sourceUrl;
 }
 
-/** Re-copy remote skills from the sources in the lock (all, or only the names given). */
-export function update(home, only) {
+/** Re-copy remote skills from the sources in the lock (all, or only the names given), then the manifest's files. */
+export function update(home, only, manifest = readManifest()) {
   const lock = readLock(home)?.skills ?? {};
   const bySource = new Map();
   for (const [name, entry] of Object.entries(lock)) {
@@ -183,11 +214,13 @@ export function update(home, only) {
     bySource.set(src, [...(bySource.get(src) ?? []), name]);
   }
   for (const [src, names] of bySource) install(src, names);
+  if (only.length) return;
+  for (const [dest, spec] of Object.entries(manifest.files ?? {})) fetchDir(spec, resolvePath(home, REPO, dest));
 }
 
 const USAGE = `用法:
   wayne-skills sync [--prune]    按 global/skills.json 装齐全局 skill，并给本机的 agent 建链接；--prune 移走清单外的
-  wayne-skills update [skill…]   重新拉 remote 类 skill（代替 skills update -g）
+  wayne-skills update [skill…]   重新拉 remote 类 skill 和 files（代替 skills update -g）
 
 增删 skill：改 global/skills.json，再跑 sync --prune。`;
 

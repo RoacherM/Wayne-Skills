@@ -2,7 +2,7 @@
   "name": "wayne-skills",
   "version": "0.2.0",
   "private": true,
-  "description": "Wayne's global skill manifest and own skills (terminal-diagrams, ub-mode, deslop, herdr), with an installer that keeps ~/.agents/skills in sync.",
+  "description": "Wayne's global skill manifest and own skills (terminal-diagrams, ub-mode, herdr), with an installer that keeps ~/.agents/skills in sync.",
   "repository": "github:RoacherM/Wayne-Skills",
   "type": "module",
   "bin": {
