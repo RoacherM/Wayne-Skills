@@ -23,5 +23,10 @@
     "id": "guard-legacy-herdr-cli",
     "prompt": "检查一下当前是不是在 Herdr 环境里，准备分屏",
     "expected_output": "检查 $HC_TERMINAL_ID 与 herdr-app status，不检查旧版 HERDR_ENV=1，也不运行已废弃的 ~/.local/bin/herdr status"
+  },
+  {
+    "id": "direct-terminal-without-subagent",
+    "prompt": "用右边那个 herdr 分屏窗口直接帮我跑一下 wayne-skills 的重新安装和测试，不用起 agent",
+    "expected_output": "确认右屏 foreground.name 为 zsh，使用 env -u HC_TERMINAL_ID hc send 直接向右屏 zsh 发送裸 shell 命令（避免被包裹成 <hc from=...> 触发 zsh 语法错误），等待命令完成后用 hc read 读取终端输出，不启动 epi/claude 子 Agent"
   }
 ]

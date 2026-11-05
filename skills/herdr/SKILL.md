@@ -89,9 +89,24 @@ CHILD_TERM=$(printf '%s' "$SPLIT_OUT" | node -pe 'JSON.parse(fs.readFileSync(0, 
 3. **传一手路径与原始标识，拒绝二道贩子摘要（No Summary Telephone）**：
    - 给右屏传精确的文件路径、行号、commit、真实会话 URL 或原始表名，不要只传主窗口浓缩改写过的二道摘要。
 
-### 第二步：实测与审查（右屏子分屏 — 交互式运行，穿透单一绿灯）
+### 第二步：右屏执行（按任务性质选「直接跑终端命令」或「启动子 Agent」）
 
-右屏一律以**交互式 TUI** 启动（绝不加 `-p` / `--print` 跑完即退），方便用户随时眼看右屏进度或直接插话：
+右屏（`$CHILD_TERM`）本身就是一个持久化的交互式 `zsh` 终端，**不一定非要启动子 Agent**：
+
+#### 模式 A：直接操作右屏 Terminal（确定性命令、安装、构建、单测、现成脚本）
+当任务已经是明确的命令序列（如重装依赖、跑测试套件、执行现成采集脚本、git 操作）时，**直接在右屏 `zsh` 里执行命令**，不要套一层子 Agent 白费耗时与 token：
+1. 先看 `hc get "$CHILD_TERM" --json` 的 `foreground.name`：
+   - 若 `foreground.name === "zsh"`，说明右屏正处于空闲 `zsh` 提示符；
+   - 若右屏里还挂着上一轮跑完的子 Agent（如 `foreground.name === "node"`），先终止该前台进程（`kill -TERM <foreground.pid>`）让右屏回到 `zsh`。
+2. **关键细节（必加 `env -u HC_TERMINAL_ID`）**：当调用方环境变量里有 `HC_TERMINAL_ID` 且目标终端曾跑过 Agent（`status` 非空）时，普通 `hc send` 会自动把文本包成 `<hc from="t...">...</hc>`，导致 `zsh` 报 `parse error`。因此向 `zsh` 直接发裸命令时，**必须加 `env -u HC_TERMINAL_ID`**：
+   ```bash
+   rm -f /tmp/herdr-cmd.done
+   env -u HC_TERMINAL_ID hc send "$CHILD_TERM" "cd /path/to/repo && <commands> ; echo EXIT:\$? > /tmp/herdr-cmd.done"
+   ```
+3. 主窗口等待 `/tmp/herdr-cmd.done` 生成（或 `hc get "$CHILD_TERM" --json` 的 `foreground.name` 回到 `"zsh"`），再用 `hc read --lines 60 "$CHILD_TERM"` 读取右屏终端输出。
+
+#### 模式 B：在右屏启动交互式子 Agent（开放式实测、对抗式 Review、独立证伪）
+当任务需要**独立上下文推理、盲区排查、多步探查或双模型对抗审查**时，在右屏以**交互式 TUI** 启动子 Agent（绝不加 `-p` / `--print` 跑完即退）：
 
 - **快速实测 / 线上只读核查 / 产物重放（`epi` + `deepseek-flash`）**：
   ```bash
