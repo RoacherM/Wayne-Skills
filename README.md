@@ -1,55 +1,44 @@
 # Wayne Skills
 
-给 coding agent 用的 skill 集合，外加它们依赖的命令行工具。一个仓库，`skills/<name>/SKILL.md` 每个目录一个 skill，用本仓库的 `bin/wayne-skills.js` 装给本机的 Claude Code / Codex / Pi / Grok / Antigravity。
+我的全局 skill 清单和我自己写的 skill。本机 `~/.agents/skills` 里装什么，只由 [`global/skills.json`](global/skills.json) 决定；`bin/wayne-skills.js sync` 让本机和清单一致，并给 Claude Code / Codex / Pi / Grok / Antigravity 建链接。
+
+## 本仓库的 skill
 
 | skill | 做什么 | 依赖 |
 |---|---|---|
-| `okr` | 替用户记目标 / KR / 任务 / 习惯的进展，看板、评估、拆解、周计划、派工 | `okr` CLI（本仓库） |
 | `terminal-diagrams` | 用户在终端里读回复时，agent 不发 ```mermaid 源码，而是用 `mmd2txt` 渲染成框线字符图再贴 | [`mmd2txt`](https://github.com/RoacherM/mmd2txt)，`npm install -g github:RoacherM/mmd2txt` |
-| `workflow-graph` | 把多执行者（人、模型、脚本）参与的工作流设计成能运行的图：循环、节点、交接物、回边、闸门、三个指标；只读这一个文件就能拿到全部流程和术语 | 无 |
-| `ub-mode` | 写代码、改代码、审代码时用三件外部量具打分：crapper（复杂度×覆盖率，CRAP < 10）、dryer（结构重复）、mutator（变异测试）。工具是 Uncle Bob 的 [crapper](https://github.com/unclebob/crapper) / [dryer](https://github.com/unclebob/dryer) / [mutator](https://github.com/unclebob/mutator)（0BSD），源码内置在 `skills/ub-mode/tools/`，`scripts/ub` 首次运行用 uv 在 `~/.cache/ub-mode` 建一个共用环境。何时跑、怎么修由 agent 自己判断 | [uv](https://docs.astral.sh/uv/)、Python 3.11–3.14（uv 会自己下载） |
-| `git-story-film` | 给一个 GitHub 仓库，按 Git 历史里真实的提交、版本、回滚编故事，做成约两分钟的手绘动画短片（大纲→角色→分镜→浏览器 Studio 预览→4K/60fps MP4）。复制自 [EverMind-AI/Raven](https://github.com/EverMind-AI/Raven/tree/main/skills/git-story-film)，Apache-2.0 | Node 22+、Google Chrome、ffmpeg、Python 3.8+ |
-| `deslop` | 给已有文本去 AI 味：删空话、模板句、翻译腔，理顺主语、术语和段落，保留原意和事实。用户说「去 AI 味」「deslop」「去翻译腔」时触发 | 无 |
-| `herdr` | 在 Herdr.app 里用同 Tab 左右分屏（`herdr-app` + `hc`）跑「左屏主窗口聊方案与调度 + 右屏子分屏独立实测、证伪与 Review」：先立假设、穿透单一绿灯、证据先行落盘（防 `hc send` 抢主窗口输入框）、替用户过滤噪音保护注意力 | Herdr.app（`herdr-app`、`hc`） |
-| `sw-*`、`chekhov-dramaturgy`、`ozu-screenplay-style` | 13 个编剧 skill：流程调度、结构、前提、人物、对白、场景、格式改编、美日韩法案例、行业、契诃夫、小津。复制自 [jtydhr88/screenwriting-skills](https://github.com/jtydhr88/screenwriting-skills) v1.3.0，清单见 [`skills/README.md`](skills/README.md) | 无 |
+| `ub-mode` | 写代码、改代码、审代码时用三件外部量具打分：crapper（复杂度×覆盖率，CRAP < 10）、dryer（结构重复）、mutator（变异测试）。工具是 Uncle Bob 的 [crapper](https://github.com/unclebob/crapper) / [dryer](https://github.com/unclebob/dryer) / [mutator](https://github.com/unclebob/mutator)（0BSD），源码内置在 `skills/ub-mode/tools/`，`scripts/ub` 首次运行用 uv 在 `~/.cache/ub-mode` 建一个共用环境 | [uv](https://docs.astral.sh/uv/)、Python 3.11–3.14（uv 会自己下载） |
+| `deslop` | 给已有文本去 AI 味：删空话、模板句、翻译腔，理顺主语、术语和段落，保留原意和事实 | 无 |
+| `herdr` | 在 Herdr.app 里用同 Tab 分屏（`herdr-app` + `hc`）跑开发模式和测试模式：先立假设、穿透单一绿灯、证据先行、保护注意力 | Herdr.app（`herdr-app`、`hc`） |
 
-## 安装
+## 全局 skill 清单
 
-所有全局 skill（本仓库的和别人仓库的）都用 `bin/wayne-skills.js` 装。它调 [skills CLI](https://github.com/vercel-labs/skills)，但只给本机装了的 agent 建链接：
+`global/skills.json` 列出本机全部全局 skill，分三类：
 
-| agent | 读哪里 | 安装器做什么 |
+| 类别 | `~/.agents/skills/<name>` 是什么 | 怎么更新 | 现在有 |
+|---|---|---|---|
+| `links` | 软链到本地仓库（相对路径指本仓库，`~/` 指 home） | 改仓库就生效 | 本仓库 4 个、storyforge |
+| `remote` | skills CLI 从 GitHub / 网站拷来的副本 | `update` | skill-creator、find-skills、show-me、lark-doc、lark-shared |
+| `external` | 别的工具自己装的（值写着装法） | 那个工具自己管 | rex、wayne-herdr-mods |
+
+```bash
+W=~/Projects/sides/wayne-skills/bin/wayne-skills.js
+node $W sync            # 装齐清单里缺的，给本机有的 agent 建链接；可以反复跑
+node $W sync --prune    # 同上，再把清单外的 skill 移到 ~/.agents/backup/sync-<时间>/
+node $W update          # 重新拉 remote 类 skill；也可只写几个名字
+```
+
+增删全局 skill：改 `global/skills.json`，跑 `sync --prune`，再提交。换机器：clone 本仓库到 `~/Projects/sides/wayne-skills`，跑 `sync`。
+
+各 agent 读哪里：
+
+| agent | 读哪里 | sync 做什么 |
 |---|---|---|
-| Codex、Pi、Grok | `~/.agents/skills`（Pi、Grok 另外也读自己的目录） | 什么都不用，skills CLI 总会把正本写在这里 |
-| Claude Code | `~/.claude/skills` | 有 `~/.claude` 才传 `-a claude-code`，由 skills CLI 建软链 |
-| Antigravity | `~/.gemini/config/skills`（skills CLI 以为它读 `~/.agents/skills`，不对） | 有 `~/.gemini/antigravity` 才由安装器自己建软链 |
+| Codex、Pi、Grok | `~/.agents/skills` | 什么都不用 |
+| Claude Code | `~/.claude/skills` | 有 `~/.claude` 才建软链 |
+| Antigravity | `~/.gemini/config/skills` | 有 `~/.gemini/antigravity` 才建软链 |
 
-```bash
-W=~/Desktop/Projects/sides/wayne-skills/bin/wayne-skills.js
-node $W add RoacherM/Wayne-Skills -s okr -s git-story-film   # 装别人的就换 source：owner/repo 或 URL
-node $W update                                             # 按 ~/.agents/.skill-lock.json 全部重装；也可只写几个 skill 名
-node $W remove git-story-film
-```
-
-不要直接跑 `npx skills add` 不带 `-a`，也不要跑 `npx skills update -g`：这两种情况下 skills CLI 会把 skill 装给所有「home 下有目录」的 agent，并给每个 agent 新建 `skills` 目录，下次更新又把这些目录当成已安装的 agent，目录越积越多（2026-09-29 清掉过 52 个）。`update` 跳过 `~/.agents/skills` 里是软链的 skill（如 ego-browser，由它自己的安装器管）。
-
-装完 agent 直接跑 `node ~/.agents/skills/okr/scripts/okr.js …`（SKILL.md 里写了）。终端里想直接敲 `okr`：
-
-```bash
-node ~/.agents/skills/okr/scripts/okr.js skill link   # 软链到 ~/.local/bin/okr；--dir 换目录
-```
-
-另一条路，先要命令再要 skill：`npm install -g github:RoacherM/Wayne-Skills` 把 `okr` 放到 PATH 上，第一次运行时把 skill 复制到 `~/.agents/skills/okr` 并给 Claude Code 建软链 `~/.claude/skills/okr`（只装这两处；之后随包自动更新自己装的那份，`OKR_SKIP_SKILL=1` 关掉；`okr skill install | remove | status` 手动）。不用 npm postinstall 是因为 npm 11 会把带安装脚本的 git 全局包装成指向临时 clone 的软链。`--no-audit`：首次拉包时 npm 的 audit 请求在某些网络下会静默挂几分钟。
-
-### 编剧 skill（只装在本仓库）
-
-13 个编剧 skill 不走插件，也不装到全局，只用 npx 以项目级复制装进本仓库：在本仓库里打开的 Claude Code 读 `.claude/skills/`，Codex 读 `.agents/skills/`。两份拷贝和 `skills-lock.json` 都提交在仓库里，clone 下来就能用。改了 `skills/` 下的编剧 skill 后，在仓库根目录重跑：
-
-```bash
-npx -y --no-audit skills add ./ -y -a claude-code -a codex --copy \
-  -s sw-workflow -s sw-story-structure -s sw-premise-theme -s sw-character-conflict -s sw-dialogue -s sw-scene-craft \
-  -s sw-format-adaptation -s sw-american-case-studies -s sw-japanese-screenwriting -s sw-korean-french-screenwriting \
-  -s sw-industry-business -s chekhov-dramaturgy -s ozu-screenplay-style
-```
+不要直接跑 `npx skills add` 不带 `-a`，也不要跑 `npx skills update -g`：这两种情况下 skills CLI 会把 skill 装给所有「home 下有目录」的 agent，并给每个 agent 新建 `skills` 目录，下次更新又把这些目录当成已安装的 agent，目录越积越多（2026-09-29 清掉过 52 个）。安装器只传 `-a codex`（只写 `~/.agents/skills` 那一份），链接自己建。
 
 ## 全局 AGENTS.md
 
@@ -78,31 +67,15 @@ bash global/claude/apply.sh --check    # 只看哪些键不同，不改文件
 
 合并只覆盖仓库里列出的键，`env` 里的其他变量保留。模型列表、`ANTHROPIC_*`、`CLAUDE_CODE_MODEL_CAPABILITIES`、`model`、`effortLevel` 由 magpie 写，herdr 的 `SessionStart` 钩子由 herdr 写，都不放进仓库。在本机改了这几项后，同步改仓库里的 `settings.json` 再提交。
 
-## okr
-
-目标与任务追踪，终端里看，agent 也能读写。事件进，视图出。用法见 [`docs/okr/README.md`](docs/okr/README.md)，设计见 [`docs/okr/DESIGN.md`](docs/okr/DESIGN.md)，agent 读写规则见 [`docs/okr/PROTOCOL.md`](docs/okr/PROTOCOL.md)（装好后 `okr protocol` 直接打印）。
-
-```bash
-okr init && okr         # 初始化 ~/.okr，打开 TUI
-okr status              # 看板（管道里是纯文本，--md 出 markdown）
-okr week                # 本周计划 / 遗留 / 吞吐
-okr brief               # 今天该注意什么
-okr log kr1 "基线跑完" --value 80
-okr show kr1.2 --spec   # 派工包
-```
-
 ## 本地开发
 
 ```bash
-git clone https://github.com/RoacherM/Wayne-Skills ~/Desktop/Projects/sides/wayne-skills && cd ~/Desktop/Projects/sides/wayne-skills
-npm install && npm link                          # okr 指向仓库源码（跑源码要 Node ≥ 23.6），改代码即生效；会覆盖 npm install -g 装的那份，回发布版重跑 npm install -g
-npm run bundle                                    # 改了 src/ 或 PROTOCOL.md 后重新打包 skills/okr/scripts/okr.js，测试会检查它没过期
-npm test && npm run typecheck
-for s in ~/Desktop/Projects/sides/wayne-skills/skills/*/; do n=$(basename $s); rm -rf ~/.agents/skills/$n && ln -s $s ~/.agents/skills/$n; done   # skill 用软链，改 SKILL.md 即生效
-okr skill install                                # 只补 Claude Code 的软链；~/.agents/skills 里已是软链就不动，自动安装也不碰软链
+git clone https://github.com/RoacherM/Wayne-Skills ~/Projects/sides/wayne-skills && cd ~/Projects/sides/wayne-skills
+node bin/wayne-skills.js sync                     # 本仓库的 skill 软链进 ~/.agents/skills，改 SKILL.md 即生效
+npm test                                          # 安装器测试，无依赖
 ```
 
-加新 skill 看 [`skills/README.md`](skills/README.md)。
+加新 skill：建 `skills/<name>/SKILL.md`（可带 `evals/evals.json`），在 `global/skills.json` 的 `links` 里加一行，跑 `sync`。
 
 ## License
 

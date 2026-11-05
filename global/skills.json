@@ -1,0 +1,19 @@
+{
+  "links": {
+    "deslop": "skills/deslop",
+    "herdr": "skills/herdr",
+    "terminal-diagrams": "skills/terminal-diagrams",
+    "ub-mode": "skills/ub-mode",
+    "storyforge": "~/Projects/formless/storyforge/skills/storyforge"
+  },
+  "remote": {
+    "anthropics/skills": ["skill-creator"],
+    "vercel-labs/skills": ["find-skills"],
+    "humanlayer/skills": ["show-me"],
+    "https://open.feishu.cn/lark-cli/skills/regular": ["lark-doc", "lark-shared"]
+  },
+  "external": {
+    "rex": "rex skill setup",
+    "wayne-herdr-mods": "node ~/Projects/sides/herdr-relay/dist/wayne-herdr-mods.mjs install"
+  }
+}
