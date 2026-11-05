@@ -10,6 +10,7 @@
 | `ub-mode` | 写代码、改代码、审代码时用三件外部量具打分：crapper（复杂度×覆盖率，CRAP < 10）、dryer（结构重复）、mutator（变异测试）。工具是 Uncle Bob 的 [crapper](https://github.com/unclebob/crapper) / [dryer](https://github.com/unclebob/dryer) / [mutator](https://github.com/unclebob/mutator)（0BSD），源码内置在 `skills/ub-mode/tools/`，`scripts/ub` 首次运行用 uv 在 `~/.cache/ub-mode` 建一个共用环境。何时跑、怎么修由 agent 自己判断 | [uv](https://docs.astral.sh/uv/)、Python 3.11–3.14（uv 会自己下载） |
 | `git-story-film` | 给一个 GitHub 仓库，按 Git 历史里真实的提交、版本、回滚编故事，做成约两分钟的手绘动画短片（大纲→角色→分镜→浏览器 Studio 预览→4K/60fps MP4）。复制自 [EverMind-AI/Raven](https://github.com/EverMind-AI/Raven/tree/main/skills/git-story-film)，Apache-2.0 | Node 22+、Google Chrome、ffmpeg、Python 3.8+ |
 | `deslop` | 给已有文本去 AI 味：删空话、模板句、翻译腔，理顺主语、术语和段落，保留原意和事实。用户说「去 AI 味」「deslop」「去翻译腔」时触发 | 无 |
+| `herdr` | 在 Herdr.app 里用同 Tab 左右分屏（`herdr-app` + `hc`）跑「左屏主窗口聊方案与调度 + 右屏子分屏独立实测、证伪与 Review」：先立假设、穿透单一绿灯、证据先行落盘（防 `hc send` 抢主窗口输入框）、替用户过滤噪音保护注意力 | Herdr.app（`herdr-app`、`hc`） |
 | `sw-*`、`chekhov-dramaturgy`、`ozu-screenplay-style` | 13 个编剧 skill：流程调度、结构、前提、人物、对白、场景、格式改编、美日韩法案例、行业、契诃夫、小津。复制自 [jtydhr88/screenwriting-skills](https://github.com/jtydhr88/screenwriting-skills) v1.3.0，清单见 [`skills/README.md`](skills/README.md) | 无 |
 
 ## 安装

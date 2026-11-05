@@ -1,0 +1,27 @@
+[
+  {
+    "id": "split-current-pane-not-tab",
+    "prompt": "在 herdr app 里把当前窗口开一个分屏，用 epi + deepseek-flash 测试一下会话 01a1a98a-f42b-7416-b545-b293a25d0a36",
+    "expected_output": "加载 herdr skill，用 $HC_TERMINAL_ID 在 herdr-app ls 中反查当前 MY_PANE（不用 focused_pane、不用旧版 herdr CLI），执行 herdr-app do pane.split --direction right --pane \"$MY_PANE\" 同 Tab 向右分屏（绝不调 tab.new），再通过 hc send 在子分屏交互式启动 epi --approve --model deepseek/deepseek-flash"
+  },
+  {
+    "id": "no-parent-hc-send-clobber",
+    "prompt": "分屏跑完测试后怎么把结果收回来？刚才子窗口 hc send 把我正在打的字直接按回车发出去了",
+    "expected_output": "严禁让子分屏调用 hc send <主窗口终端ID>；要求子分屏将证据与结论写入 /tmp/herdr-<task>/report.md 并自然结束回合，主窗口通过 hc wait 循环等待子分屏变为 done 后读取报告文件或 hc read"
+  },
+  {
+    "id": "critical-thinking-falsification",
+    "prompt": "我改完了成片 content 提取逻辑，帮我在右边分屏开个 agent 实测并 review 一下能不能上线",
+    "expected_output": "派单前先立假设与证伪条件（什么反例会证明它错）并传一手文件路径；要求右屏子 Agent 不仅测单条样本绿灯，还要核查全量/边界覆盖率（绿灯证明了什么、没测到什么）及隐式决策；主窗口收回后按「实测证据、假设 vs 实测、绿灯边界、需拍板的隐式决策」汇报以节省用户注意力"
+  },
+  {
+    "id": "reuse-existing-sibling-pane",
+    "prompt": "右边那个分屏还在，让它继续测一下 v2 版本 timeline.json mtime 晚于 film.json 的边界情况",
+    "expected_output": "检查当前 Tab 的 SIBLING_TERMS，直接复用已处于 done/idle 状态的右屏子终端发送新指令并 hc wait，不再重复 pane.split 或新开 Tab"
+  },
+  {
+    "id": "guard-legacy-herdr-cli",
+    "prompt": "检查一下当前是不是在 Herdr 环境里，准备分屏",
+    "expected_output": "检查 $HC_TERMINAL_ID 与 herdr-app status，不检查旧版 HERDR_ENV=1，也不运行已废弃的 ~/.local/bin/herdr status"
+  }
+]

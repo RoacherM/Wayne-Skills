@@ -9,6 +9,7 @@
 | `workflow-graph` | 设计或改造开发流程、agent 编排、审查流程的 agent | 通用范式，不针对某个项目：术语表、9 条规则、运行时主控和顾问、六步设计法、交付模板。自成一体，不引用别的文件 |
 | `git-story-film` | 给仓库做宣传片的 agent | 从 Git 历史挑真实提交编故事，做约两分钟的手绘动画：`engine/` 画图与动画，`scripts/` 统计 Git、取字体、出帧、渲染 MP4，`examples/raven-story/` 是完整示例片。复制自 [EverMind-AI/Raven](https://github.com/EverMind-AI/Raven)（Apache-2.0，`LICENSE` 随目录）的 commit `e6c0344`（2026-09-28），未改动、未附 evals |
 | `deslop` | 改已有中文文本的 agent（消息、邮件、报告、方案、文档、文章） | 去 AI 味：按 `references/` 里 L1–L4 四份清单依次删空话和翻译腔、理主语和术语、改开场结尾和判断、调段落与 Markdown；保留原意和事实，只改命中处。来源是 `deslop-skill.zip`（2026-11-04），由 `deslop-article` 去掉公众号专用规则而来 |
+| `herdr` | 在 Herdr.app 终端里运行的任意 agent（Antigravity / Claude Code / Codex / Pi） | 同 Tab 左右分屏实测与批判性审查工作流：用 `$HC_TERMINAL_ID` 在 `herdr-app ls` 反查自身 `MY_PANE` 并 `pane.split`（禁 `tab.new` 与 `focused_pane` 误判）；主窗口 `hc wait` + 子窗口写报告文件（禁 `hc send` 抢主窗口输入框）；按「立假设→独立证伪与穿透绿灯→证据先行与隐式决策提炼」保护用户注意力 |
 
 以下 13 个来自 [jtydhr88/screenwriting-skills](https://github.com/jtydhr88/screenwriting-skills)（plugin `screenwriting` v1.3.0，复制自 2026-09-08 的 commit `0657714`），由 19 本编剧书与契诃夫、小津全集蒸馏而成，正文中文、frontmatter 英文。上游许可为「For personal study use」，未附 evals。不用上游的插件装法，只以项目级复制装进本仓库的 `.claude/skills/` 和 `.agents/skills/`（命令见根 README）。与上游唯一的差别：`sw-dialogue`、`sw-korean-french-screenwriting` 的 description 改成 `>-` 块写法，原文未加引号的 `: ` 让 skills CLI 解析失败、装不上。
 
