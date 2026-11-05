@@ -28,5 +28,10 @@
     "id": "direct-terminal-without-subagent",
     "prompt": "用右边那个 herdr 分屏窗口直接帮我跑一下 wayne-skills 的重新安装和测试，不用起 agent",
     "expected_output": "确认右屏 foreground.name 为 zsh，使用 env -u HC_TERMINAL_ID hc send 直接向右屏 zsh 发送裸 shell 命令（避免被包裹成 <hc from=...> 触发 zsh 语法错误），等待命令完成后用 hc read 读取终端输出，不启动 epi/claude 子 Agent"
+  },
+  {
+    "id": "dev-mode-1-plus-3-layout",
+    "prompt": "按开发模式在当前窗口搭一下四角色分屏布局（orchestrator / worker / reviewer / terminal）",
+    "expected_output": "用 $HC_TERMINAL_ID 反查左屏 MY_PANE（Orchestrator），先向右切出 Worker（右上），再从 Worker 向下切出 Reviewer（右中），再从 Reviewer 向下切出纯 zsh 的 Terminal（右下），形成同 Tab 左 1 + 右 3 布局，全过程不调 tab.new"
   }
 ]
