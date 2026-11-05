@@ -1,7 +1,7 @@
 {
   "links": {
     "deslop": "skills/deslop",
-    "herdr-app": "skills/herdr-app",
+    "herdr": "skills/herdr",
     "terminal-diagrams": "skills/terminal-diagrams",
     "ub-mode": "skills/ub-mode",
     "storyforge": "~/Projects/formless/storyforge/skills/storyforge"
@@ -15,6 +15,7 @@
     "~/.agents/docs/harness": "cursor/plugins/harness/pstack/claude-code/docs/harness"
   },
   "external": {
+    "colab-operator": "随 colab 命令行（google-colab-cli）安装",
     "rex": "rex skill setup",
     "wayne-herdr-mods": "node ~/Projects/sides/herdr-relay/dist/wayne-herdr-mods.mjs install"
   }

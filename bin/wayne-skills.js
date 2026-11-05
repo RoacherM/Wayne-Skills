@@ -107,6 +107,17 @@ const readLock = (home) => (existsSync(lockPath(home)) ? JSON.parse(readFileSync
 /** `~/x` is under home, a relative path is under the repo. */
 const resolvePath = (home, repo, p) => (p.startsWith('~/') ? join(home, p.slice(2)) : isAbsolute(p) ? p : join(repo, p));
 
+const wantedNames = (manifest) =>
+  new Set([...Object.keys(manifest.links ?? {}), ...Object.values(manifest.remote ?? {}).flat(), ...Object.keys(manifest.external ?? {})]);
+
+/** Skills in ~/.agents/skills that the manifest does not list: what `--prune` would remove. */
+export function strays(home, manifest) {
+  const root = join(home, '.agents', 'skills');
+  if (!existsSync(root)) return [];
+  const wanted = wantedNames(manifest);
+  return readdirSync(root).filter((name) => !name.startsWith('.') && !wanted.has(name));
+}
+
 const stampOf = (d) => d.toISOString().slice(0, 19).replace(/[-:]/g, '').replace('T', '-');
 
 /**
@@ -128,7 +139,7 @@ export function sync(home, manifest, { repo = REPO, prune = false, now = new Dat
   const remote = manifest.remote ?? {};
   const external = manifest.external ?? {};
   const remoteNames = Object.values(remote).flat();
-  const wanted = new Set([...Object.keys(links), ...remoteNames, ...Object.keys(external)]);
+  const wanted = wantedNames(manifest);
 
   for (const [name, p] of Object.entries(links)) {
     const target = resolvePath(home, repo, p);
@@ -162,8 +173,7 @@ export function sync(home, manifest, { repo = REPO, prune = false, now = new Dat
   }
 
   if (prune) {
-    for (const name of readdirSync(root)) {
-      if (name.startsWith('.') || wanted.has(name)) continue;
+    for (const name of strays(home, manifest)) {
       for (const a of LINKED_AGENTS) unlinkSkill(home, a, name);
       if (lstat(join(root, name)).isSymbolicLink()) {
         rmSync(join(root, name));
@@ -219,16 +229,25 @@ export function update(home, only, manifest = readManifest()) {
 }
 
 const USAGE = `用法:
-  wayne-skills sync [--prune]    按 global/skills.json 装齐全局 skill，并给本机的 agent 建链接；--prune 移走清单外的
-  wayne-skills update [skill…]   重新拉 remote 类 skill 和 files（代替 skills update -g）
+  wayne-skills sync                 按 global/skills.json 装齐全局 skill，并给本机的 agent 建链接
+  wayne-skills sync --prune         同上，再列出清单外的 skill（只列，不动）
+  wayne-skills sync --prune --yes   同上，并把清单外的 skill 移到 ~/.agents/backup/sync-<时间>/
+  wayne-skills update [skill…]      重新拉 remote 类 skill 和 files（代替 skills update -g）
 
-增删 skill：改 global/skills.json，再跑 sync --prune。`;
+增删 skill：改 global/skills.json，跑 sync --prune 看清单外有什么，确认后加 --yes。
+别的工具装的 skill 也会出现在清单外：要留就写进 external。`;
 
 function main(argv) {
   const home = homedir();
   const [cmd, ...rest] = argv;
   if (cmd === 'sync') {
-    const log = sync(home, readManifest(), { prune: rest.includes('--prune') });
+    const manifest = readManifest();
+    const prune = rest.includes('--prune') && rest.includes('--yes');
+    const log = sync(home, manifest, { prune });
+    if (rest.includes('--prune') && !prune) {
+      const extra = strays(home, manifest);
+      if (extra.length) log.push(`清单外 ${extra.length} 个（没动）：${extra.join(', ')}\n要移走就加 --yes；要留就写进 global/skills.json`);
+    }
     console.log(log.length ? log.join('\n') : '已经一致');
   } else if (cmd === 'update') update(home, rest);
   else throw new Error(USAGE);

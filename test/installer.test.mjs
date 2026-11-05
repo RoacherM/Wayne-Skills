@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlink
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { installedAgents, LINKED_AGENTS, linkSkill, readManifest, REPO, sync } from '../bin/wayne-skills.js';
+import { installedAgents, LINKED_AGENTS, linkSkill, readManifest, REPO, strays, sync } from '../bin/wayne-skills.js';
 
 const fresh = () => mkdtempSync(join(tmpdir(), 'wayne-skills-'));
 const antigravity = LINKED_AGENTS.find((a) => a.id === 'antigravity');
@@ -99,4 +99,12 @@ test('sync fetches a files entry only when its destination is missing', () => {
   sync(home, manifest, { repo: fresh(), fetchFiles });
   sync(home, manifest, { repo: fresh(), fetchFiles });
   assert.deepEqual(calls, [['o/r/docs', join(home, '.agents/docs')]]);
+});
+
+test('strays lists skills outside the manifest without touching them', () => {
+  const home = fresh();
+  skill(join(home, '.agents/skills/keep'));
+  skill(join(home, '.agents/skills/other-tool'));
+  assert.deepEqual(strays(home, { external: { keep: 'x' } }), ['other-tool']);
+  assert.ok(existsSync(join(home, '.agents/skills/other-tool/SKILL.md')));
 });

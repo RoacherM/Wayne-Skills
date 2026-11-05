@@ -8,7 +8,7 @@
 |---|---|---|
 | `terminal-diagrams` | 用户在终端里读回复时，agent 不发 ```mermaid 源码，而是用 `mmd2txt` 渲染成框线字符图再贴 | [`mmd2txt`](https://github.com/RoacherM/mmd2txt)，`npm install -g github:RoacherM/mmd2txt` |
 | `ub-mode` | 写代码、改代码、审代码时用三件外部量具打分：crapper（复杂度×覆盖率，CRAP < 10）、dryer（结构重复）、mutator（变异测试）。工具是 Uncle Bob 的 [crapper](https://github.com/unclebob/crapper) / [dryer](https://github.com/unclebob/dryer) / [mutator](https://github.com/unclebob/mutator)（0BSD），源码内置在 `skills/ub-mode/tools/`，`scripts/ub` 首次运行用 uv 在 `~/.cache/ub-mode` 建一个共用环境 | [uv](https://docs.astral.sh/uv/)、Python 3.11–3.14（uv 会自己下载） |
-| `herdr-app` | 在 Herdr.app 里用同 Tab 分屏（`herdr-app` + `hc`）跑开发模式（Orchestrator / Worker / Reviewer / Terminal）和测试模式：先立假设、穿透单一绿灯、证据先行、保护注意力 | Herdr.app（`herdr-app`、`hc`） |
+| `herdr` | 在 Herdr 里控制分屏、终端和 Agent。先判断环境：Herdr.app（`herdr-app` + `hc`）走 `references/herdr-app.md` 里的「左 1 + 右 3」开发流程；终端版 `herdr` 走 `herdr --skill` 的官方说明 | Herdr.app 或 herdr |
 | `deslop` | 给已有中文文本去 AI 味：删空话、模板句、翻译腔，理顺主语、术语和段落，保留原意和事实 | 无 |
 
 ## 全局 skill 清单
@@ -25,11 +25,12 @@
 ```bash
 W=~/Projects/sides/wayne-skills/bin/wayne-skills.js
 node $W sync            # 装齐清单里缺的，给本机有的 agent 建链接；可以反复跑
-node $W sync --prune    # 同上，再把清单外的 skill 移到 ~/.agents/backup/sync-<时间>/
+node $W sync --prune    # 同上，再列出清单外的 skill（只列，不动）
+node $W sync --prune --yes   # 真的把清单外的 skill 移到 ~/.agents/backup/sync-<时间>/
 node $W update          # 重新拉 remote 类 skill；也可只写几个名字
 ```
 
-增删全局 skill：改 `global/skills.json`，跑 `sync --prune`，再提交。换机器：clone 本仓库到 `~/Projects/sides/wayne-skills`，跑 `sync`。
+增删全局 skill：改 `global/skills.json`，跑 `sync --prune` 看清单外有什么，确认后加 `--yes`，再提交。别的工具（如 `colab`）自己装的 skill 也会出现在清单外：要留就写进 `external`。换机器：clone 本仓库到 `~/Projects/sides/wayne-skills`，跑 `sync`。
 
 各 agent 读哪里：
 

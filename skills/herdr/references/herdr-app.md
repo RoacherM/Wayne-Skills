@@ -1,18 +1,6 @@
----
-name: herdr-app
-description: >
-  在 Herdr.app 中使用同 Tab 分屏（herdr-app + hc）执行「开发模式（左 1 + 右 3：Orchestrator / Worker / Reviewer / Terminal）」与「测试模式」的最佳实践工作流，结合批判性思维（先立假设、穿透单一绿灯、证据先行、保护注意力）。
-  不管旧版终端界面 `herdr`（`HERDR_ENV=1`，官方 skill 也叫 herdr）。
-  当用户提到 Herdr.app、herdr-app、hc、分屏、开个分屏、子窗口测试、分屏 review、右边窗口跑一下，或在 Herdr.app 中需要协同多窗口/终端开发与实测时使用。
----
-
 # Herdr.app 分屏开发与批判性实测工作流（`herdr-app` + `hc`）
 
 在 **Herdr.app**（`__CFBundleIdentifier=dev.herdr.app`）中，用同 Tab 分屏把**思考控场、编码实现、对抗审查、真实终端测试**放在同一个视野内。
-
-**先确认在 Herdr.app 里**：`test -n "${HC_TERMINAL_ID:-}"`。为空就停下，告诉用户当前不在 Herdr.app 管理的终端里，不要去操作别人的会话。
-
-**命令以官方手册为准**：动手前先跑 `herdr-app --skill`（窗口、分屏）和 `hc --skill`（终端、Agent、等待），它们随安装的版本更新。本文件只写手册里没有的东西：我的布局、角色和铁律。两者冲突时，以手册为准，并告诉用户这里过时了。
 
 核心原则（结合 Addy Osmani《Critical thinking when agents do the work》）：
 - **人只有一双眼睛（One Pair of Eyes）**：绝不把子任务丢进隐藏的新 Tab（`tab.new`）。固定在**当前 Tab 内分屏**（`pane.split`），省去来回切 Tab 的调度税（Orchestration Tax）。
