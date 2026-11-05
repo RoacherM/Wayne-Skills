@@ -107,16 +107,22 @@ eval "$(herdr-app ls | node -e '
 
 1. **直接操作纯 `Terminal`（`zsh`）时必加 `env -u HC_TERMINAL_ID`**：
    - 当调用方环境变量里有 `HC_TERMINAL_ID` 且目标终端曾跑过 Agent（`status` 非空）时，普通 `hc send` 会自动把文本包成 `<hc from="t...">...</hc>`，导致 `zsh` 报 `parse error`。
-   - 此外，命令末尾连接完成标记时**必须用分号 `;` 而不是 `&&`**（否则前序命令失败退出非 0 时不会写入 `.done` 文件，导致主窗口死等）：
+   - 等命令跑完用 `hc wait --output`，不用轮询文件。先在后台开始等，再发命令（2026-11-05 实测）：
      ```bash
-     rm -f /tmp/herdr-cmd.done
-     env -u HC_TERMINAL_ID hc send "$TERM_ID" "cd /tmp && bash test.sh ; echo EXIT:\$? > /tmp/herdr-cmd.done"
-     while [ ! -f /tmp/herdr-cmd.done ]; do sleep 1; done
-     cat /tmp/herdr-cmd.done
-     hc read --lines 60 "$TERM_ID"
+     ( hc wait "$TERM_ID" --output "__done_1:" --timeout 600 ) &
+     env -u HC_TERMINAL_ID hc send "$TERM_ID" "cd /tmp && bash test.sh ; echo '__do''ne_1':\$?"
+     wait
+     hc read --lines 60 "$TERM_ID"   # 最后一行 __done_1:<退出码>
+     ```
+     - 标记写成 `'__do''ne_1'`：屏幕上回显的命令行里没有 `__done_1`，`hc wait` 只会匹配到 echo 的输出。
+     - 标记前用分号 `;`，不用 `&&`：前面的命令失败了也会打出标记，主窗口不会死等。
+   - 一次性命令、不需要固定的右下 `Terminal` 时，可以用 `hc run` 在当前 Tab 新开一个分屏，`hc wait` 直接返回退出码：
+     ```bash
+     hc run --bg --name test-1 --cwd "$PWD" --label herdr.space="$MY_SPACE" --label herdr.tab="$MY_TAB" -- bash test.sh
+     hc wait test-1    # 返回 exit_code；跑完 hc rm test-1
      ```
 2. **操作 `Worker` / `Reviewer` 子 Agent 时严禁让它回调 `hc send <主窗口>`**：
-   - `hc send <target>` 会直接往目标终端输入框粘贴文本并按回车（`\r`）；若用户正在左屏 `Orchestrator` 打字，子窗口调 `hc send $MY_TERMINAL` 会把用户写到一半的句子当场截断发出去。
+   - `hc send <target>` 会直接往目标终端输入框粘贴文本并按回车（`\r`）；若用户正在左屏 `Orchestrator` 打字，子窗口调 `hc send $MY_TERMINAL` 会把用户写到一半的句子当场截断发出去。`hc send` 会等人停止打字再粘贴，但人打到一半停下来想，也算停顿，所以这个保护不够。
    - **固定做法**：子 Agent 把结果写进 `/tmp/herdr-<task>/*.md` 后自然结束回合；`Orchestrator` 用 `hc wait` 循环等待子 Agent 状态变为 `done` 后直接读文件。
 
 ---
