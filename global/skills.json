@@ -4,6 +4,7 @@
     "herdr": "skills/herdr",
     "terminal-diagrams": "skills/terminal-diagrams",
     "ub-mode": "skills/ub-mode",
+    "unslop-ui": "skills/unslop-ui",
     "vibe-coding": "skills/vibe-coding",
     "storyforge": "~/Projects/formless/storyforge/skills/storyforge"
   },
@@ -17,6 +18,7 @@
   },
   "external": {
     "colab-operator": "随 colab 命令行（google-colab-cli）安装",
+    "ego-browser": "随 ego lite 应用安装",
     "rex": "rex skill setup",
     "wayne-herdr-mods": "node ~/Projects/sides/herdr-relay/dist/wayne-herdr-mods.mjs install"
   }
