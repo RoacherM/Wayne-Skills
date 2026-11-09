@@ -17,6 +17,12 @@ The request is the floor. Work at the ceiling of what you can do, on every task.
 - Write near ASD-STE100 in any language: short sentences, one idea each, plain words; explain every new term at first use.
 - Pick the clearest medium: a diagram or table for structure and flow, an HTML page when long or shared, a video when motion explains best. Keep one current, self-contained document per design so a reader with only that file gets the whole process and every term.
 
+## Memory
+
+- Nowledge Mem holds my long-term memory. Use the `nowledge-mem` skill (the `nmem` CLI) for every read and write.
+- When a task continues earlier work, or I say 上次 / 之前, run `nmem --json context read --source-app <your tool>` once, then one targeted `nmem --json m search` or `t search` before you conclude. If retrieval fails, say so.
+- Save durable decisions, root causes and verified procedures with `nmem m add`. Conversations sync in the background; do not save whole conversations by hand.
+
 ## Corrections
 
 - When the user corrects you or says 记一下 / log this, follow `~/.agents/corrections/README.md`. First time in a repo: read the 规则 lines of its open records and the global ones.

@@ -13,6 +13,7 @@
 | `deslop` | 给已有中文文本去 AI 味：删空话、模板句、翻译腔，理顺主语、术语和段落，保留原意和事实 | 无 |
 | `unslop-ui` | 把「一看就是 AI 生成」的界面改成有自己性格的设计：先审出 slop，定方向，再按间距、颜色、图标、文案、字体、布局、细节、画面、动效九遍改。可拍网页快照、可出 10 秒 story 视频。原作者 [Damir Sokolovsky](https://github.com/heydamir/unslop)，CC BY 4.0 | 无；快照和视频要 Playwright + Chromium，视频还要 ffmpeg |
 | `vibe-coding` | 项目工程与文档规范：目录边界（`code / test / dev / probe / bench`）、活文档与接口设计（OpenAPI + Cloudflare Nimbus）、以及面向 Agent 自动开发、测试、Issue 跟踪与修复的 6 态闭环（附 `scripts/doc-lint.mjs`） | Node.js ≥ 22 |
+| `nowledge-mem` | 用 `nmem` 命令行读写 Nowledge Mem：开工读上下文、搜记忆和对话、存结论；后台 LaunchAgent 每 10 分钟同步 6 个 coding agent 的对话 | Nowledge Mem Desktop（自带 `nmem`）；没有 Desktop 的机器由 `global/nowledge/apply.sh` 用 uv 装 `nmem-cli` 0.10.112 |
 
 ## 全局 skill 清单
 
@@ -71,6 +72,20 @@ bash global/claude/apply.sh --check    # 只看哪些键不同，不改文件
 ```
 
 合并只覆盖仓库里列出的键，`env` 里的其他变量保留。模型列表、`ANTHROPIC_*`、`CLAUDE_CODE_MODEL_CAPABILITIES`、`model`、`effortLevel` 由 magpie 写，herdr 的 `SessionStart` 钩子由 herdr 写，都不放进仓库。在本机改了这几项后，同步改仓库里的 `settings.json` 再提交。
+
+## Nowledge Mem
+
+长期记忆统一走 `nowledge-mem` skill 和 `nmem` 命令行，不再用 Nowledge Mem 官方给每个工具各装一个的插件——不要装它们，会和这里的 skill、后台同步重复。
+
+```bash
+node bin/wayne-skills.js sync        # skill 软链进 ~/.agents/skills，各 agent 自动可见
+bash global/link.sh                 # AGENTS.md 里的「## Memory」段告诉 agent 怎么用
+bash global/nowledge/apply.sh       # 确认 nmem 可用，装 LaunchAgent：每 10 分钟同步 6 个 agent 的对话
+bash global/nowledge/apply.sh --check    # 只看状态：nmem、doctor、plist、job、日志最后 5 行
+bash global/nowledge/apply.sh --remove   # 卸载 LaunchAgent（日志保留）
+```
+
+同步日志在 `~/Library/Logs/nmem-capture.log`。换机器时在 `sync` 之后跑一次 `apply.sh` 就齐了。历史对话全量回填是一次性手动操作：`nmem t sync --from <工具名> --all-projects --apply`（不带 `--limit`）。
 
 ## 本地开发
 
