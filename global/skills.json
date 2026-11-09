@@ -2,6 +2,7 @@
   "links": {
     "deslop": "skills/deslop",
     "herdr": "skills/herdr",
+    "implicit-state-machines": "skills/implicit-state-machines",
     "terminal-diagrams": "skills/terminal-diagrams",
     "ub-mode": "skills/ub-mode",
     "unslop-ui": "skills/unslop-ui",
