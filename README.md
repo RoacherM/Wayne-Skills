@@ -20,7 +20,7 @@
 | 类别 | `~/.agents/skills/<name>` 是什么 | 怎么更新 | 现在有 |
 |---|---|---|---|
 | `links` | 软链到本地仓库（相对路径指本仓库，`~/` 指 home） | 改仓库就生效 | 本仓库 6 个、storyforge |
-| `remote` | skills CLI 从 GitHub / 网站拷来的副本 | `update` | skill-creator、lark-doc、lark-shared、[pstack](https://github.com/cursor/plugins/tree/main/pstack) 里的 unslop、technical-writing、ketchup、bro、automate-me（Claude Code 适配版） |
+| `remote` | skills CLI 从 GitHub / 网站拷来的副本 | `update` | skill-creator、auday、lark-doc、lark-shared、[pstack](https://github.com/cursor/plugins/tree/main/pstack) 里的 unslop、technical-writing、ketchup、bro、automate-me（Claude Code 适配版） |
 | `external` | 别的工具自己装的（值写着装法） | 那个工具自己管 | rex、wayne-herdr-mods |
 | `files` | 不是 skill：从 GitHub 拉一个目录放到指定位置，给 skill 引用自身目录以外的文件用 | `update` | `~/.agents/docs/harness`（pstack 的 Claude Code 适配说明，technical-writing 要读） |
 

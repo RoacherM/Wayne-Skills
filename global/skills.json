@@ -10,6 +10,7 @@
   },
   "remote": {
     "anthropics/skills": ["skill-creator"],
+    "666ghj/auday-skill": ["auday"],
     "https://open.feishu.cn/lark-cli/skills/regular": ["lark-doc", "lark-shared"],
     "https://github.com/cursor/plugins/tree/main/harness/pstack/claude-code/skills": ["unslop", "technical-writing", "ketchup", "bro", "automate-me"]
   },
