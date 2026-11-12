@@ -1,0 +1,23 @@
+{
+  "precheck": "npm run lint && npm test",
+  "highRisk": [
+    "src/auth/**",
+    "src/protocol/**",
+    "src/sandbox/**",
+    "src/storage/**"
+  ],
+  "shards": {
+    "ui": ["src/ui/**", "test/ui/**"],
+    "core": ["src/**"]
+  },
+  "reviewDir": ".local/reviews",
+  "issueFile": "docs/issues/INDEX.md",
+  "redactFiles": [
+    "config*.env",
+    "**/.env*"
+  ],
+  "models": {
+    "carbon": "gemini-4-carbon-high",
+    "argon": "gemini-4-argon-high"
+  }
+}

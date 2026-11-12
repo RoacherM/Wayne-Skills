@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Local commit & merge gate hook template (vibe-coding unified review rules).
+# Enable: cp <skill>/scripts/hooks/pre-* .githooks/ && chmod +x .githooks/pre-* && git config core.hooksPath .githooks
+set -euo pipefail
+ROOT=$(git rev-parse --show-toplevel)
+if [[ -x "$ROOT/scripts/review.sh" ]]; then
+  exec "$ROOT/scripts/review.sh" hook-pre-commit "$@"
+fi
+RUNNER="${VIBE_REVIEW_SH:-$HOME/.agents/skills/vibe-coding/scripts/review.sh}"
+if [[ ! -f "$RUNNER" ]]; then
+  echo "[pre-commit] unified review runner not found at '$RUNNER' (and '$ROOT/scripts/review.sh' missing)." >&2
+  exit 1
+fi
+exec bash "$RUNNER" hook-pre-commit "$@"
