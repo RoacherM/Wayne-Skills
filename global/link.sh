@@ -29,7 +29,7 @@ if [[ "${1:-}" == "--remove" ]]; then
   done
   exit 0
 fi
-mkdir -p "$(dirname "$DEST")" "$(dirname "$CORR_DEST")"
+mkdir -p "$(dirname "$DEST")" "$HOME/.agents/corrections/inbox" "$HOME/.agents/corrections/promoted"
 cp "$SRC" "$DEST"; echo "copied  $SRC -> $DEST"
 cp "$MEM_SRC" "$MEM_DEST"; echo "copied  $MEM_SRC -> $MEM_DEST"
 cp "$CORR_SRC" "$CORR_DEST"; echo "copied  $CORR_SRC -> $CORR_DEST"

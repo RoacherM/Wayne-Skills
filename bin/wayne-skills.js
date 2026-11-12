@@ -22,6 +22,7 @@ import {
 import { homedir, tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { applyInbox, listInbox } from '../global/corrections/inbox.js';
 
 export const REPO = fileURLToPath(new URL('..', import.meta.url));
 export const MANIFEST = join(REPO, 'global', 'skills.json');
@@ -235,23 +236,34 @@ const USAGE = `用法:
   wayne-skills sync --prune         同上，再列出清单外的 skill（只列，不动）
   wayne-skills sync --prune --yes   同上，并把清单外的 skill 移到 ~/.agents/backup/sync-<时间>/
   wayne-skills update [skill…]      重新拉 remote 类 skill 和 files（代替 skills update -g）
+  wayne-skills inbox                查看并行会话投递在 ~/.agents/corrections/inbox/ 的待合入纠偏卡
+  wayne-skills inbox --apply        把 MEMORY.md#<小节> 纠偏卡合入 global/MEMORY.md 与 ~/.agents/MEMORY.md，归档到 promoted/
 
 增删 skill：改 global/skills.json，跑 sync --prune 看清单外有什么，确认后加 --yes。
 别的工具装的 skill 也会出现在清单外：要留就写进 external。`;
 
-function main(argv) {
-  const home = homedir();
+function runSync(home, repo, rest) {
+  const manifest = readManifest(join(repo, 'global', 'skills.json'));
+  const prune = rest.includes('--prune') && rest.includes('--yes');
+  const log = sync(home, manifest, { repo, prune });
+  if (rest.includes('--prune') && !prune) {
+    const extra = strays(home, manifest);
+    if (extra.length) log.push(`清单外 ${extra.length} 个（没动）：${extra.join(', ')}\n要移走就加 --yes；要留就写进 global/skills.json`);
+  }
+  console.log(log.length ? log.join('\n') : '已经一致');
+}
+
+function runInbox(home, repo, rest) {
+  if (rest.length > 1 || (rest.length === 1 && rest[0] !== '--apply')) throw new Error(USAGE);
+  const log = rest[0] === '--apply' ? applyInbox(home, { repo }) : listInbox(home);
+  console.log(log.length ? log.join('\n') : 'inbox 为空');
+}
+
+export function main(argv, { home = homedir(), repo = REPO } = {}) {
   const [cmd, ...rest] = argv;
-  if (cmd === 'sync') {
-    const manifest = readManifest();
-    const prune = rest.includes('--prune') && rest.includes('--yes');
-    const log = sync(home, manifest, { prune });
-    if (rest.includes('--prune') && !prune) {
-      const extra = strays(home, manifest);
-      if (extra.length) log.push(`清单外 ${extra.length} 个（没动）：${extra.join(', ')}\n要移走就加 --yes；要留就写进 global/skills.json`);
-    }
-    console.log(log.length ? log.join('\n') : '已经一致');
-  } else if (cmd === 'update') update(home, rest);
+  if (cmd === 'sync') runSync(home, repo, rest);
+  else if (cmd === 'update') update(home, rest);
+  else if (cmd === 'inbox') runInbox(home, repo, rest);
   else throw new Error(USAGE);
 }
 

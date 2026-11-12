@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlink
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { installedAgents, LINKED_AGENTS, linkSkill, readManifest, REPO, strays, sync } from '../bin/wayne-skills.js';
+import { installedAgents, LINKED_AGENTS, linkSkill, main, readManifest, REPO, strays, sync } from '../bin/wayne-skills.js';
 
 const fresh = () => mkdtempSync(join(tmpdir(), 'wayne-skills-'));
 const antigravity = LINKED_AGENTS.find((a) => a.id === 'antigravity');
@@ -102,11 +102,15 @@ test('sync fetches a files entry only when its destination is missing', () => {
   assert.deepEqual(calls, [['o/r/docs', join(home, '.agents/docs')]]);
 });
 
-test('strays lists skills outside the manifest without touching them', () => {
+test('strays lists skills outside the manifest without touching them, and main sync --prune reports them', () => {
   const home = fresh();
+  const repo = fresh();
+  mkdirSync(join(repo, 'global'), { recursive: true });
+  writeFileSync(join(repo, 'global/skills.json'), JSON.stringify({ external: { keep: 'x' } }));
   skill(join(home, '.agents/skills/keep'));
   skill(join(home, '.agents/skills/other-tool'));
   assert.deepEqual(strays(home, { external: { keep: 'x' } }), ['other-tool']);
+  main(['sync', '--prune'], { home, repo });
   assert.ok(existsSync(join(home, '.agents/skills/other-tool/SKILL.md')));
 });
 
@@ -120,6 +124,9 @@ test('global/link.sh copies AGENTS.md, MEMORY.md, and corrections/README.md and 
   assert.ok(existsSync(dest));
   assert.ok(existsSync(memDest));
   assert.ok(existsSync(join(home, '.agents/corrections/README.md')));
+  assert.ok(existsSync(join(home, '.agents/corrections/inbox')));
+  assert.ok(existsSync(join(home, '.agents/corrections/promoted')));
+  writeFileSync(join(home, '.agents/corrections/inbox/keep.md'), 'pending');
   const targets = [
     '.claude/CLAUDE.md',
     '.codex/AGENTS.md',
@@ -135,6 +142,7 @@ test('global/link.sh copies AGENTS.md, MEMORY.md, and corrections/README.md and 
   assert.equal(rm.status, 0, rm.stderr);
   assert.ok(!existsSync(dest));
   assert.ok(!existsSync(memDest));
+  assert.ok(existsSync(join(home, '.agents/corrections/inbox/keep.md')));
   for (const rel of targets) {
     assert.ok(!existsSync(join(home, rel)));
   }

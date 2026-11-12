@@ -51,10 +51,13 @@ node $W update          # 重新拉 remote 类 skill；也可只写几个名字
 全局规则做两层拆分，换机器 clone 仓库后跑一次 `link.sh` 即可同步：
 - [`global/AGENTS.md`](global/AGENTS.md)（常驻所有会话）：只写 5 条跨任务通用原则（先想清楚再动手、极简优先、精准边界与模块长期归属、目标驱动与长任务播报、按场景索引个人偏好），不耦合任何具体 Skill 名字。
 - [`global/MEMORY.md`](global/MEMORY.md)（拷到 `~/.agents/MEMORY.md`，按需读取）：按 `界面与原型 / 编码与验证 / 文档与沟通 / 环境与配额` 四节沉淀个人工作习惯与跨项目历史纠偏记录，避免常驻规则越积越重。
+- **多 Agent 并行无锁纠偏收件箱**（[`global/corrections/`](global/corrections/)）：各分屏/业务仓遇到跨仓纠偏时，只往 `~/.agents/corrections/inbox/<时间>-<slug>-<pid>.md` 投递独立卡片，不越界直改 `MEMORY.md`；统一用 `wayne-skills inbox [--apply]` 加锁去重合入 `global/MEMORY.md` 与 `~/.agents/MEMORY.md` 并归档至 `promoted/`（`AGENTS.md` 与 `vibe-coding` 卡片保留待人工审阅）。
 
 ```bash
-bash global/link.sh            # 拷 AGENTS.md / MEMORY.md 到 ~/.agents/，软链到 ~/.claude/CLAUDE.md、~/.codex/AGENTS.md、~/.pi/agent/AGENTS.md、~/.factory/AGENTS.md、~/.grok/AGENTS.md、~/.gemini/GEMINI.md；corrections/README.md 拷到 ~/.agents/corrections/
-bash global/link.sh --remove   # 清理上述副本与指向 AGENTS.md 的软链（.bak 备份不动）
+bash global/link.sh                     # 拷 AGENTS.md / MEMORY.md 到 ~/.agents/，软链到 6 个 agent 指令位，准备 ~/.agents/corrections/{inbox,promoted}
+bash global/link.sh --remove            # 清理上述副本与指向 AGENTS.md 的软链（.bak 备份与 inbox/promoted 记录不动）
+node bin/wayne-skills.js inbox          # 查看并行会话投递的待合入纠偏卡
+node bin/wayne-skills.js inbox --apply  # 合入 MEMORY.md#<小节> 卡片、同步 ~/.agents/MEMORY.md 并归档到 promoted/
 ```
 
 ## Claude Code 设置
