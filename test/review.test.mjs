@@ -209,6 +209,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 [[ $ptimeout == "1800s" ]] || { echo "expected 1800s, got $ptimeout" >&2; exit 2; }
+[[ $prompt != *"notes-"* ]] || { echo "prompt must not ask for redundant notes file" >&2; exit 2; }
 key=$(printf '%s' "$prompt" | sed -n 's/.*reviewer \\[\\([^]]*\\)\\].*/\\1/p')
 dir=$(printf '%s' "$prompt" | sed -n 's/.*Read \\([^ ]*\\)\\/pack\\.md.*/\\1/p')
 cat > "$dir/review-$key.md" <<'EOF'
@@ -416,6 +417,7 @@ EOF
       assert.equal(ok.status, 0, ok.stderr);
       const patch = readFileSync(join(repo, '.local/reviews/cred-redacted/diff.patch'), 'utf8');
       const snapEnv = readFileSync(join(repo, '.local/reviews/cred-redacted/repo/config.prod.env'), 'utf8');
+      assert.ok(!existsSync(join(repo, '.local/reviews/cred-redacted/before')), 'must not export redundant full before/ snapshot');
       assert.ok(!patch.includes(fakeToken), 'diff.patch must not contain raw secret from redactFiles');
       assert.ok(!snapEnv.includes(fakeToken), 'frozen snapshot must not contain raw secret from redactFiles');
       assert.match(patch, /OPENAI_API_KEY=<REDACTED>/);

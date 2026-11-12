@@ -242,15 +242,38 @@ function scanPatchForCredentials(patchPath) {
   }
 }
 
+function gitFileAtRef(ref, file) {
+  try {
+    return execFileSync("git", ["show", `${ref}:${file}`], {
+      cwd: root,
+      encoding: "utf8",
+      maxBuffer: 64 * 1024 * 1024,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+  } catch {
+    return null;
+  }
+}
+
 function diffSingleFile(base, head, file, absDir, isRedacted) {
   if (isRedacted) {
-    const a = existsSync(join(absDir, "before", file)) ? join(absDir, "before", file) : "/dev/null";
+    const baseRaw = gitFileAtRef(base, file);
+    const tmpBefore = join(absDir, ".redact-before.tmp");
+    let a = "/dev/null";
+    if (baseRaw !== null) {
+      writeFileSync(tmpBefore, redactContent(baseRaw), "utf8");
+      a = tmpBefore;
+    }
     const b = existsSync(join(absDir, "repo", file)) ? join(absDir, "repo", file) : "/dev/null";
     let raw = "";
     try {
       raw = execFileSync("git", ["diff", "--no-index", "--", a, b], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
     } catch (e) {
       raw = (e.stdout || "").toString("utf8");
+    } finally {
+      if (a !== "/dev/null") {
+        try { unlinkSync(tmpBefore); } catch {}
+      }
     }
     return raw
       .replaceAll(`a/${ a.replace(/^\/+/, "") }`, `a/${file}`)
@@ -329,7 +352,6 @@ if (action === "config-shell") {
   const maxLines = parseInt(process.env.REVIEW_MAX_DIFF_LINES || "2000", 10) || 2000;
   const files = gitChangedFiles(base, head, cfg);
   applyRedactionsToTree(join(absDir, "repo"), files, cfg.redactFiles);
-  applyRedactionsToTree(join(absDir, "before"), files, cfg.redactFiles);
 
   const items = files.map((file) => {
     const isRed = cfg.redactFiles.length > 0 && matchesAny(file, cfg.redactFiles);
@@ -392,32 +414,11 @@ if (action === "config-shell") {
   const [fixBase, head, absDir] = rest;
   const cfg = loadConfig(false);
   const files = gitChangedFiles(fixBase, head, cfg);
-  const beforeFixDir = join(absDir, "before-fix");
   applyRedactionsToTree(join(absDir, "repo"), files, cfg.redactFiles);
-  applyRedactionsToTree(beforeFixDir, files, cfg.redactFiles);
   const patches = files.map((file) => {
     const isRed = cfg.redactFiles.length > 0 && matchesAny(file, cfg.redactFiles);
-    if (!isRed) {
-      return execFileSync("git", ["diff", "--no-renames", fixBase, head, "--", file], {
-        cwd: root,
-        encoding: "utf8",
-        maxBuffer: 64 * 1024 * 1024,
-      });
-    }
-    const a = existsSync(join(beforeFixDir, file)) ? join(beforeFixDir, file) : "/dev/null";
-    const b = existsSync(join(absDir, "repo", file)) ? join(absDir, "repo", file) : "/dev/null";
-    let raw = "";
-    try {
-      raw = execFileSync("git", ["diff", "--no-index", "--", a, b], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
-    } catch (e) {
-      raw = (e.stdout || "").toString("utf8");
-    }
-    return raw
-      .replaceAll(`a/${ a.replace(/^\/+/, "") }`, `a/${file}`)
-      .replaceAll(`b/${ b.replace(/^\/+/, "") }`, `b/${file}`)
-      .replace(/^diff --git .*$/m, `diff --git a/${file} b/${file}`);
+    return diffSingleFile(fixBase, head, file, absDir, isRed);
   });
-  rmSync(beforeFixDir, { recursive: true, force: true });
   writeFileSync(join(absDir, "touched-files.txt"), files.length ? `${files.join("\n")}\n` : "");
   const fixPatchPath = join(absDir, "fix.patch");
   writeFileSync(fixPatchPath, patches.join(""));
@@ -605,7 +606,7 @@ EOF
 # Blind Review Pack ($(basename "$abs_dir"))
 
 - Frozen head snapshot: \`$abs_dir/repo\` (read-only; do NOT read or modify live \`$ROOT\`).
-- Frozen base snapshot: \`$abs_dir/before\`.
+- Changed files list: \`$abs_dir/changed-files.txt\`.
 - Full diff: \`$abs_dir/diff.patch\`.
 - Precheck log: \`$abs_dir/precheck.log\`.
 ${focus:+- Focus: $focus}
@@ -668,7 +669,7 @@ cmd_precheck() {
     git diff --stat "$base_sha" "$head_sha"
   } >"$log" 2>&1
 
-  if ! export_copy "$head_sha" "$abs_dir/repo" >>"$log" 2>&1 || ! export_copy "$base_sha" "$abs_dir/before" >>"$log" 2>&1; then
+  if ! export_copy "$head_sha" "$abs_dir/repo" >>"$log" 2>&1; then
     cat "$log" >&2
     return 1
   fi
@@ -743,7 +744,7 @@ cmd_start() {
       else
         diff_target="$abs_dir/shards/$unit.patch (subsystem shard '$unit' listed in $abs_dir/shards/$unit.files; use $abs_dir/repo only for read-only cross-file context)"
       fi
-      prompt="You are independent blind reviewer [$key] ($model). Read $abs_dir/pack.md and review $diff_target using frozen copies $abs_dir/repo and $abs_dir/before plus $abs_dir/precheck.log. Rules: (1) Do NOT modify live repository files; write only inside $abs_dir. (2) Do NOT re-run the full test suite; precheck already passed — run only minimal reproduction probes for blocking findings. (3) Do NOT read any *$peer* files in $abs_dir (blind review). (4) Write working notes to $abs_dir/notes-$key.md and final report to $abs_dir/review-$key.md. (5) Blocking (P0/P1) covers ONLY five classes: violates core principles, loses data, leaks credentials, widens permission/sandbox boundary, or causes a reproducible crash/test failure (with minimal repro). P2/P3 are non-blocking (logged to $CFG_ISSUE_FILE). Line 1 of $abs_dir/review-$key.md MUST be literally '可接受' (when P0=0 and P1=0) or '不可接受' (when any P0 or P1 exists), and Line 2 MUST be literally 'COUNTS: P0=<n> P1=<n> P2=<n> P3=<n>'."
+      prompt="You are independent blind reviewer [$key] ($model). Read $abs_dir/pack.md and review $diff_target, consulting $abs_dir/repo/AGENTS.md (if present), $abs_dir/precheck.log, and only the changed files or direct callers/callees in $abs_dir/repo needed to verify concrete defects. Rules: (1) Do NOT modify live repository files; write only inside $abs_dir. (2) Do NOT re-run the full test suite; precheck already passed — run only minimal reproduction probes for blocking findings. (3) Do NOT read any *$peer* files in $abs_dir (blind review). (4) Write your final report directly to $abs_dir/review-$key.md (no separate scratch/notes file, no filler prose). (5) Blocking (P0/P1) covers ONLY five classes: violates core principles, loses data, leaks credentials, widens permission/sandbox boundary, or causes a reproducible crash/test failure (with minimal repro). P2/P3 are non-blocking (one line each, logged to $CFG_ISSUE_FILE). Line 1 of $abs_dir/review-$key.md MUST be literally '可接受' (when P0=0 and P1=0) or '不可接受' (when any P0 or P1 exists), and Line 2 MUST be literally 'COUNTS: P0=<n> P1=<n> P2=<n> P3=<n>'."
       local cmd=("$AGY" --model "$model" --dangerously-skip-permissions --disable-slash-commands --print-timeout "${timeout_sec}s" -p "$prompt")
       if [[ ${REVIEW_DRY:-0} == "1" ]]; then
         printf '%q ' "${cmd[@]}"
@@ -779,7 +780,6 @@ cmd_confirm() {
     return 1
   fi
 
-  export_copy "$fix_base_sha" "$abs_dir/before-fix" >/dev/null 2>&1 || return 1
   err_file="$dir/confirm.err"
   if ! run_node_helper prepare-confirm "$fix_base_sha" "$head_sha" "$abs_dir" 2>"$err_file"; then
     cat "$err_file" >&2
@@ -794,7 +794,7 @@ cmd_confirm() {
   write_pack_file "$abs_dir" "confirm" "$focus"
   timeout_sec=${REVIEW_TIMEOUT:-1800}
 
-  prompt="You are post-fix confirmation reviewer [$slot] ($model) under unified rule 7. Read $abs_dir/pack.md, the fix diff $abs_dir/fix.patch, and ONLY the touched files listed in $abs_dir/touched-files.txt inside $abs_dir/repo (plus $abs_dir/precheck.log). Confirm ONLY two things: (1) whether the prior blocking findings are fixed, and (2) whether the fix broke adjacent code in those touched files. Do NOT re-review other files from Round 1, and do NOT re-run the full test suite. Write working notes to $abs_dir/notes-$slot.md and final report to $abs_dir/review-$slot.md. Line 1 MUST be literally '可接受' (when P0=0 and P1=0) or '不可接受' (when any P0 or P1 remains), and Line 2 MUST be literally 'COUNTS: P0=<n> P1=<n> P2=<n> P3=<n>'."
+  prompt="You are post-fix confirmation reviewer [$slot] ($model) under unified rule 7. Read $abs_dir/pack.md, the fix diff $abs_dir/fix.patch, and ONLY the touched files listed in $abs_dir/touched-files.txt inside $abs_dir/repo (plus $abs_dir/precheck.log). Confirm ONLY two things: (1) whether the prior blocking findings are fixed, and (2) whether the fix broke adjacent code in those touched files. Do NOT re-review other files from Round 1, and do NOT re-run the full test suite. Write your final report directly to $abs_dir/review-$slot.md (no separate scratch/notes file). Line 1 MUST be literally '可接受' (when P0=0 and P1=0) or '不可接受' (when any P0 or P1 remains), and Line 2 MUST be literally 'COUNTS: P0=<n> P1=<n> P2=<n> P3=<n>'."
   local cmd=("$AGY" --model "$model" --dangerously-skip-permissions --disable-slash-commands --print-timeout "${timeout_sec}s" -p "$prompt")
   if [[ ${REVIEW_DRY:-0} == "1" ]]; then
     printf '%q ' "${cmd[@]}"

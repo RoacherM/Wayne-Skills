@@ -110,19 +110,31 @@ test('strays lists skills outside the manifest without touching them', () => {
   assert.ok(existsSync(join(home, '.agents/skills/other-tool/SKILL.md')));
 });
 
-test('global/link.sh copies AGENTS.md and corrections/README.md and links Claude, Codex, Pi, and Factory Droid', () => {
+test('global/link.sh copies AGENTS.md, MEMORY.md, and corrections/README.md and links Claude, Codex, Pi, Factory Droid, and Antigravity', () => {
   const home = fresh();
   const linkSh = join(REPO, 'global/link.sh');
   const res = spawnSync('bash', [linkSh], { encoding: 'utf8', env: { ...process.env, HOME: home } });
   assert.equal(res.status, 0, res.stderr);
   const dest = join(home, '.agents/AGENTS.md');
+  const memDest = join(home, '.agents/MEMORY.md');
   assert.ok(existsSync(dest));
+  assert.ok(existsSync(memDest));
   assert.ok(existsSync(join(home, '.agents/corrections/README.md')));
-  for (const rel of ['.claude/CLAUDE.md', '.codex/AGENTS.md', '.pi/agent/AGENTS.md', '.factory/AGENTS.md']) {
+  const targets = [
+    '.claude/CLAUDE.md',
+    '.codex/AGENTS.md',
+    '.pi/agent/AGENTS.md',
+    '.factory/AGENTS.md',
+    '.gemini/GEMINI.md',
+  ];
+  for (const rel of targets) {
     assert.equal(readlinkSync(join(home, rel)), dest);
   }
   const rm = spawnSync('bash', [linkSh, '--remove'], { encoding: 'utf8', env: { ...process.env, HOME: home } });
   assert.equal(rm.status, 0, rm.stderr);
   assert.ok(!existsSync(dest));
-  assert.ok(!existsSync(join(home, '.factory/AGENTS.md')));
+  assert.ok(!existsSync(memDest));
+  for (const rel of targets) {
+    assert.ok(!existsSync(join(home, rel)));
+  }
 });

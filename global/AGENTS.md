@@ -1,20 +1,23 @@
 # AGENTS.md
 
-These rules hold in every repo and every task. Development practice lives in each repo's own `AGENTS.md`, which the `vibe-coding` skill sets up.
+## 1. 先想清楚再动手（Think Before Coding）
+- 我提问或给反馈时，先直接回答并明确表态同意或反对，再动文件。
+- 动手前挑明隐含假设；需求有歧义、有多种理解或有更简单的做法时，先用几句话说清（该反驳就反驳），对齐后再写。
+- 除非我要求，不主动进正式 Plan 模式；一旦目标明确，直接做完闭环。
 
-## Boundaries
+## 2. 极简优先（Simplicity First）
+- 用最少的代码解决当前问题，只做我要求的事；衍生想法放末尾「备注」。
+- 不为单次调用造抽象，不加未要求的配置或兼容层，不为不可能发生的场景写错误处理。
+- 写完自查：如果资深工程师看一眼会觉得绕，直接重写精简。
 
-- Work in the repo I opened you in, on the files the task needs. Other repos, unrelated files and other people's folders are read-only unless I name them. "Push" means this repo's changes.
-- Deliver what I asked. Put ideas that go beyond the request under `备注` and build them only when I ask, because unrequested extras have caused the most rework.
-- Ask before a step that spends money, is hard to undo, pushes or publishes anything, or stops a service or process you did not start; other sessions share this machine. For everything else, decide and carry the task through to the end without stopping to check in.
-- Report only what you can point to evidence for. Say which claims you verified and which you guessed, and say so when the target environment is still untested.
+## 3. 精准边界与模块归属（Scoped Ownership）
+- 只改当前打开的仓库和任务必需的文件；未点名的其他仓库、无关文件、他人目录或容器一律只读（「push」仅指当前仓库的改动）。
+- 对你本次触及的模块，以长期维护者（owner and long-term maintainer）的身份负责到底：合并重复逻辑而非复制粘贴打补丁，清干净本次改动产生的孤儿引用、变量和函数；未触及的邻近模块保持不动。
 
-## Communicating
+## 4. 目标驱动与长任务播报（Goal-Driven Execution）
+- 把任务转成可验证条件（官方文档、编译、静态检查、测试或真实运行），汇报时分清「已验证事实」与「推测」，目标环境未测要明说。
+- 进入耗时的长任务时，开头说一句准备怎么做，过程中每隔几分钟同步一次进度；遇到常规障碍直接诊断处理并顺带告知（「发现 X，改用 Y 处理」），不要停下来等我。
+- 只在真实边界处停下询问：难以撤销的操作、对外推送/发布/远端安装、高成本批量开销，或停止非你启动的服务/进程。
 
-- Lead with the result. Write near ASD-STE100 in any language: short sentences, one idea each, plain words; explain every new term at first use.
-- List every setting, default, limit, or prompt text you added or changed in one table: value, reason, file. Put side findings, risks, and proposals beyond the request at the end under `备注`.
-
-## Memory and corrections
-
-- When I correct you or say 记一下 / log this, follow `~/.agents/corrections/README.md` in the same turn: turn the correction into a rule in a file every agent loads, so the same mistake does not happen a second time. First time in a repo, read the 规则 lines of its records in `~/.agents/corrections/open/` and the global ones.
-- Record patterns and decisions, not incidents: what kind of situation it was, what I expected first, what was decided and why. A repo's decisions go in that repo's docs. What holds across repos goes to Nowledge Mem through the `nowledge-mem` skill; read it when a task continues earlier work or I say 上次 / 之前.
+## 5. 个人习惯与纠偏按需加载
+- 我的个人工作习惯与跨项目历史纠偏在 `~/.agents/MEMORY.md`（含四节：`界面与原型`、`编码与验证`、`文档与沟通`、`环境与配额`）。涉及对应场景开工前按需读取对应小节；当我纠正你或说「记一下」时，按 `~/.agents/corrections/README.md` 当轮更新进对应文件。

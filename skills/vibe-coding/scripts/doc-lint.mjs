@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // Audit a repository's documentation and issue queue against the vibe-coding standard.
 // Usage: node doc-lint.mjs [repo-root] [--json]
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { extname, join, relative, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const SKIP_DIRS = new Set([
   '.git', 'node_modules', 'dist', 'build', 'target', '.next',
@@ -97,7 +98,7 @@ function checkDesignRefs(text, relFile, designHeadings, error) {
 }
 
 function checkSubsystemRefs(text, relFile, getHeadings, error) {
-  const pattern = /docs\/subsystems\/([A-Za-z0-9_./-]+\.md)#([^\s`'")\]>\}，。；：！？、“”‘’「」【】]+)/g;
+  const pattern = /docs\/subsystems\/([A-Za-z0-9_./-]+\.md)#([^\s`'")\]>}，。；：！？、“”‘’「」【】]+)/g;
   for (const m of text.matchAll(pattern)) {
     const subRel = `docs/subsystems/${m[1]}`;
     const anchor = m[2];
@@ -229,7 +230,7 @@ export function lintRepo(repoRoot) {
   return { root, ok: !findings.some((f) => f.severity === 'error'), findings };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const args = process.argv.slice(2);
   const jsonMode = args.includes('--json');
   const targetRoot = args.find((a) => !a.startsWith('-')) || process.cwd();

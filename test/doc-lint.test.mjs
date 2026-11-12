@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -95,6 +95,23 @@ describe('doc-lint anchor and metadata checks', () => {
       assert.ok(byRule.has('orphan-issue-card'));
     } finally {
       rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('runs CLI entry when invoked through a symlink (like ~/.agents/skills/vibe-coding/scripts/doc-lint.mjs)', () => {
+    const dir = makeFixture();
+    const linkDir = mkdtempSync(join(tmpdir(), 'doc-lint-link-'));
+    try {
+      const linkBin = join(linkDir, 'doc-lint.mjs');
+      symlinkSync(DOC_LINT_BIN, linkBin);
+      writeFileSync(join(dir, 'src/bad.ts'), '// DESIGN.md「未知章节」\nexport const x = 1;\n');
+      const cli = spawnSync(process.execPath, [linkBin, dir, '--json'], { encoding: 'utf8' });
+      assert.equal(cli.status, 1, 'symlinked CLI must execute lintRepo and exit 1 on errors');
+      const parsed = JSON.parse(cli.stdout);
+      assert.equal(parsed.ok, false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+      rmSync(linkDir, { recursive: true, force: true });
     }
   });
 });

@@ -1,57 +1,37 @@
-# `AGENTS.md` 标准模板（建议 80 行内，减少常驻上下文开销）
+# `AGENTS.md` 极简仓库模板（建议 50 行内）
 
-新建或整理仓库时，在根目录创建 `AGENTS.md`，并让 `CLAUDE.md` 内容为 `@AGENTS.md`（使用 Epi 开发的仓库可在 `.epi/epi.json` 的 `rules` 中加入 `"../AGENTS.md"`）。
+通用编码品味、分层验证、评审与 Issue 闭环统一由全局 `vibe-coding` 与 `ub-mode` Skill 承载，**不要再往仓库 `AGENTS.md` 里复制通用工程套话**。仓库根目录 `AGENTS.md`（`CLAUDE.md` 写 `@AGENTS.md`）只写本仓库独有的目录职责、省时间的快检命令、文档路由与真实踩坑记录。
 
-```markdown
-# <repo-name> contributor entrypoint
+````markdown
+# <repo-name>
 
-<一句话说明本仓库是什么、拥有什么边界、不拥有什么边界。>
+<一句话说明本仓库做什么、边界在哪里。>
 
-## 1. 目录与边界测试（The Boundary Test）
+## 1. 目录边界
 
-| 目录 | 职责 | 放进这里的判断标准 |
-|---|---|---|
-| `<dir-a>/` | ... | 改这行是在改 <A> 还是 <B>？ |
-| `<dir-b>/` | ... | ... |
-| `test/` | 免预启动单测与契约测试 | 不起外部服务、只用临时实例与临时 HOME 能跑通吗？ |
-| `dev/` | 冒烟测试、跑分脚本、假端 | 需要先起本地中继 / 浏览器 / 守护进程吗？ |
-| `probe/` | 外部系统/底座一次性探针 | 是在验证外部二进制或接口的未知行为吗？ |
+| 目录 | 职责与放入判断标准 |
+|---|---|
+| `<dir-a>/` | ... |
+| `test/` | 免预启动单测（临时实例与临时 HOME，秒级跑通） |
+| `dev/` | 需外部前置条件的 smoke / bench / fake 脚本（见文件首行说明） |
 
-## 2. 按任务读取文档（改到对应内容时才读，避免开工全量扫 `docs/`）
-
-- 改架构、模块边界或内部协议时读：`DESIGN.md`（或按模块读 `docs/subsystems/<module>.md`）
-- 改跨模块约束或历史拍板项时读：`docs/decisions.md`
-- 改对外 HTTP / RPC 接口时读：`docs/api/openapi.yaml`
-- 认领待办或登记非阻塞问题时读：`docs/issues/INDEX.md`
-- 历史归档：`docs/archive/`（日常开发不读，只在追溯历史背景或用户要求时查阅，以免过期方案干扰当前实现）
-
-## 3. 常用命令
+## 2. 常用命令（开发迭代优先跑静态快检 + 单文件测试）
 
 ```sh
-npm test                                      # 免准备单测（秒级，零外部副作用）
-npm run test:smoke                            # 端到端冒烟（见脚本开头前置条件）
-scripts/review.sh precheck <id> main HEAD     # 预检并冻结快照（修复加 --fix；随后 start / wait / verify）
+oxlint <changed-files>                        # JS/TS 毫秒级静态与坏味道检查（Python 用 ruff check，Shell 用 shellcheck）
+node --test test/<target>.test.mjs            # 单文件快检（迭代中途跑这个，不跑全量）
+npm test                                      # 全量免准备单测（集成完成后跑一次）
+scripts/review.sh precheck <id> main HEAD     # 预检并冻结评审包（bug 修复加 --fix）
 ```
 
-## 4. 开发规范
+## 3. 按任务读文档
 
-1. **外部检查判定结果**：用官方文档、测试、编译器、基准或数据库记录来验收，避免凭主观印象判断完成。修 bug 先写出在旧代码上失败、新代码上通过的测试；改完代码对改动文件跑 `ub-mode`（复杂度、重复度、变异测试），提前拦住低阶缺陷。
-2. **目标环境验证**：涉及运行环境、界面或端到端链路时，在真实目标环境中核实（改源码后通过安装或构建命令同步，不手改安装态副本以免下次同步被覆盖）。借用本地模拟或跳板时写明「尚未在目标环境验证」；若目标环境验证会花钱、发对外请求或改动线上数据，先问用户确认。
-3. **本窗口隔离测试**：在当前会话自己的终端里用新端口、临时实例和临时 `HOME` 跑测试与验证，因为同一台机器上常有用户在用的服务和其他并行会话。除非用户要求，不开新窗口或抢占键鼠焦点，以免打断用户正在做的事。
-4. **按要求先定方案**：当用户要求先写方案、先出原型，或遇到影响接口与用户体验的关键取舍时，先对齐方案再改代码，避免方向未定造成返工。需求明确且未要求先看方案时，直接做完整个闭环。
-5. **按路径原子提交**：提交时用 `git commit --only -- <本次改动路径>`，防止把工作区里并行会话或用户未完成的改动一起卷进提交。
-6. **活文档与决策同步**：改动改变了外部行为、配置或模块契约时，同步更新 `DESIGN.md` 或 `docs/`（改线协议或持久化格式前先写清兼容行为），避免旧文档误导后续会话。定下会约束后续工作的决定时，当轮写进 `docs/decisions.md`，写明原因和被否掉的选项。写文档引用代码前重读源文件核实，外部探针结论标明依赖版本与日期。
-7. **单篇自包含设计文档**：每个设计或子系统只维护一份当前自包含文档，让只读这一份文件的读者也能看懂完整流程与全部术语，避免多份残片说法不一。被取代的旧文档移入 `docs/archive/`。
-8. **独立评审**：按 `vibe-coding` Skill 的「统一评审规则」对完整功能或重构做一次全量评审，避免拆小包和终审把同一段代码审两遍；本仓不另立别的评审流程。本仓参数写在 `.review.json`（高风险路径、预检命令、切分与打码规则），由薄入口 `scripts/review.sh` 转调 `~/.agents/skills/vibe-coding/scripts/review.sh`；需要门禁时从该 Skill 的 `scripts/hooks/` 拷入 `.githooks/` 并运行 `git config core.hooksPath .githooks`。
+- 架构与协议事实：`DESIGN.md`（或 `docs/subsystems/<module>.md`）
+- 对外接口契约：`docs/api/openapi.yaml`
+- 待办队列：`docs/issues/INDEX.md`（日常开发不读 `docs/archive/`）
 
-## 5. Issue 自动处理闭环
+## 4. 本仓硬约束与教训
 
-当被要求「修 Issue」或推进 `docs/issues/INDEX.md` 时：
-1. 只认领 `status: ready` 的条目；遇到 `needs-decision`、`external-blocked` 或 `ops-approval` 时汇总选项或所需授权向用户确认，不直接改代码。
-2. 按条目里的 `verify` 跑出 Red → 改代码跑出 Green → 跑全量 `npm test`；若属完整功能、重构或触及高风险路径，按第 4.8 条执行独立评审。
-3. 用 `git commit --only -- <paths>` 提交，同步更新对应活文档，将条目状态改为 `verifying-dev` 或 `done`（填上 commit SHA 与测试名），并删除已 `done` 的单张 `docs/issues/I-*.md`，保持队列里只留活跃项。
-
-## 教训
-
-<!-- 这里放本仓犯过的错和被纠正过的做法，每条一行写清情境、做法与原因；写法见 ~/.agents/corrections/README.md -->
-```
+- <只写本仓特有的不可破约束：如实时守护进程不可重启、持久化 key / 线协议兼容要求、构建同步命令等>
+- <!-- 本仓踩过的坑按「情境 → 做法 → 原因（含依赖版本与日期）」一行一条记在这里 -->
+````

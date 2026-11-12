@@ -12,7 +12,7 @@
 | `implicit-state-machines` | 原样一句提示词：找出应用里所有隐式状态机，选同时提升 UX、DX、AX 且不破坏现有功能的方案 | 无 |
 | `deslop` | 给已有中文文本去 AI 味：删空话、模板句、翻译腔，理顺主语、术语和段落，保留原意和事实 | 无 |
 | `unslop-ui` | 把「一看就是 AI 生成」的界面改成有自己性格的设计：先审出 slop，定方向，再按间距、颜色、图标、文案、字体、布局、细节、画面、动效九遍改。可拍网页快照、可出 10 秒 story 视频。本地加了一份审美参考 `references/recent.md`（[recent.design](https://recent.design) 精选作品的共同做法）和拉取最新精选的 `scripts/recent.mjs`。原作者 [Damir Sokolovsky](https://github.com/heydamir/unslop)，CC BY 4.0 | 无；快照和视频要 Playwright + Chromium，视频还要 ffmpeg |
-| `vibe-coding` | 项目工程与开发规范：目录边界（`code / test / dev / probe / bench`）、仓库 `AGENTS.md`「开发规范」模板、活文档与接口设计（OpenAPI + Cloudflare Nimbus）、统一评审规则与评审执行器（`scripts/review.sh` + 门禁钩子）、以及面向 Agent 自动开发、测试、Issue 跟踪与修复的 5 步闭环与 7 态 Issue 队列（附 `scripts/doc-lint.mjs`） | Node.js ≥ 20 |
+| `vibe-coding` | 通用编码与项目工程规范：代码品味（按概念拆文件、无 boolean 开关、信任边界校验、删旧路径）、两级验证（`oxlint` / `ruff` / `shellcheck` 毫秒级静态快检 + `ub-mode` 结构与变异门禁）、目录边界（`code / test / dev / probe / bench`）、极简仓库 `AGENTS.md` 模板、活文档与接口设计（OpenAPI + Cloudflare Nimbus）、统一评审规则与评审执行器（`scripts/review.sh` + 门禁钩子）、以及 Issue 自动修复 5 步闭环（附 `scripts/doc-lint.mjs`） | Node.js ≥ 20；推荐装 `oxlint`、`ruff`、`shellcheck` |
 | `nowledge-mem` | 用 `nmem` 命令行读写 Nowledge Mem：开工读上下文、搜记忆和对话、存结论；后台 LaunchAgent 每 10 分钟同步 6 个 coding agent 的对话 | Nowledge Mem Desktop（自带 `nmem`）；没有 Desktop 的机器由 `global/nowledge/apply.sh` 用 uv 装 `nmem-cli` 0.10.112 |
 
 ## 全局 skill 清单
@@ -45,16 +45,16 @@ node $W update          # 重新拉 remote 类 skill；也可只写几个名字
 
 不要直接跑 `npx skills add` 不带 `-a`，也不要跑 `npx skills update -g`：这两种情况下 skills CLI 会把 skill 装给所有「home 下有目录」的 agent，并给每个 agent 新建 `skills` 目录，下次更新又把这些目录当成已安装的 agent，目录越积越多（2026-09-29 清掉过 52 个）。安装器只传 `-a codex`（只写 `~/.agents/skills` 那一份），链接自己建。
 
-## 全局 AGENTS.md
+## 全局 AGENTS.md 与 MEMORY.md
 
-`global/AGENTS.md` 是给所有 coding agent 的全局指令，一份文件，换机器时 clone 仓库后跑一次就同步：
+全局规则做两层拆分，换机器 clone 仓库后跑一次 `link.sh` 即可同步：
+- [`global/AGENTS.md`](global/AGENTS.md)（常驻所有会话）：只写 5 条跨任务通用原则（先想清楚再动手、极简优先、精准边界与模块长期归属、目标驱动与长任务播报、按场景索引个人偏好），不耦合任何具体 Skill 名字。
+- [`global/MEMORY.md`](global/MEMORY.md)（拷到 `~/.agents/MEMORY.md`，按需读取）：按 `界面与原型 / 编码与验证 / 文档与沟通 / 环境与配额` 四节沉淀个人工作习惯与跨项目历史纠偏记录，避免常驻规则越积越重。
 
 ```bash
-bash global/link.sh            # 拷到 ~/.agents/AGENTS.md，再软链到 ~/.claude/CLAUDE.md、~/.codex/AGENTS.md、~/.pi/agent/AGENTS.md、~/.factory/AGENTS.md；原有文件留作 .bak-日期；corrections/README.md 拷到 ~/.agents/corrections/
-bash global/link.sh --remove   # 只删指向本文件的软链
+bash global/link.sh            # 拷 AGENTS.md / MEMORY.md 到 ~/.agents/，软链到 ~/.claude/CLAUDE.md、~/.codex/AGENTS.md、~/.pi/agent/AGENTS.md、~/.factory/AGENTS.md、~/.gemini/GEMINI.md；corrections/README.md 拷到 ~/.agents/corrections/
+bash global/link.sh --remove   # 清理上述副本与指向 AGENTS.md 的软链（.bak 备份不动）
 ```
-
-写法参照 Anthropic 的《Prompting Claude Fable 5》与《Prompting Claude Fable 5.2》指南：全局 `AGENTS.md` 只写跨仓库硬约束（边界、汇报格式、记忆与纠正），说明原因、具体列出需确认的动作、不堆绝对禁令；开发规范放在 `vibe-coding` 模板里，初始化项目时带进各仓自己的 `AGENTS.md`。
 
 ## Claude Code 设置
 
