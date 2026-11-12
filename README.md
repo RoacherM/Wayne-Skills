@@ -11,7 +11,7 @@
 | `herdr` | 在 Herdr 里控制分屏、终端和 Agent。先判断环境：Herdr.app（`herdr-app` + `hc`）走 `references/herdr-app.md` 里的分屏开发流程（日常左 1 + 右 2，按需加开 Reviewer）；终端版 `herdr` 走 `herdr --skill` 的官方说明 | Herdr.app 或 herdr |
 | `implicit-state-machines` | 原样一句提示词：找出应用里所有隐式状态机，选同时提升 UX、DX、AX 且不破坏现有功能的方案 | 无 |
 | `deslop` | 给已有中文文本去 AI 味：删空话、模板句、翻译腔，理顺主语、术语和段落，保留原意和事实 | 无 |
-| `unslop-ui` | 把「一看就是 AI 生成」的界面改成有自己性格的设计：先审出 slop，定方向，再按间距、颜色、图标、文案、字体、布局、细节、画面、动效九遍改。可拍网页快照、可出 10 秒 story 视频。原作者 [Damir Sokolovsky](https://github.com/heydamir/unslop)，CC BY 4.0 | 无；快照和视频要 Playwright + Chromium，视频还要 ffmpeg |
+| `unslop-ui` | 把「一看就是 AI 生成」的界面改成有自己性格的设计：先审出 slop，定方向，再按间距、颜色、图标、文案、字体、布局、细节、画面、动效九遍改。可拍网页快照、可出 10 秒 story 视频。本地加了一份审美参考 `references/recent.md`（[recent.design](https://recent.design) 精选作品的共同做法）和拉取最新精选的 `scripts/recent.mjs`。原作者 [Damir Sokolovsky](https://github.com/heydamir/unslop)，CC BY 4.0 | 无；快照和视频要 Playwright + Chromium，视频还要 ffmpeg |
 | `vibe-coding` | 项目工程与开发规范：目录边界（`code / test / dev / probe / bench`）、仓库 `AGENTS.md`「开发规范」模板、活文档与接口设计（OpenAPI + Cloudflare Nimbus）、统一评审规则与评审执行器（`scripts/review.sh` + 门禁钩子）、以及面向 Agent 自动开发、测试、Issue 跟踪与修复的 5 步闭环与 7 态 Issue 队列（附 `scripts/doc-lint.mjs`） | Node.js ≥ 20 |
 | `nowledge-mem` | 用 `nmem` 命令行读写 Nowledge Mem：开工读上下文、搜记忆和对话、存结论；后台 LaunchAgent 每 10 分钟同步 6 个 coding agent 的对话 | Nowledge Mem Desktop（自带 `nmem`）；没有 Desktop 的机器由 `global/nowledge/apply.sh` 用 uv 装 `nmem-cli` 0.10.112 |
 
@@ -22,7 +22,7 @@
 | 类别 | `~/.agents/skills/<name>` 是什么 | 怎么更新 | 现在有 |
 |---|---|---|---|
 | `links` | 软链到本地仓库（相对路径指本仓库，`~/` 指 home） | 改仓库就生效 | 本仓库 8 个、storyforge |
-| `remote` | skills CLI 从 GitHub / 网站拷来的副本 | `update` | skill-creator、auday、lark-doc、lark-shared、[pstack](https://github.com/cursor/plugins/tree/main/pstack) 里的 bro |
+| `remote` | skills CLI 从 GitHub / 网站拷来的副本 | `update` | skill-creator、auday、lark-doc、lark-shared、[NSH](https://nsh.dev) 官方的 nsh 和 nsh-design-guides（开发指南与设计规范，来自 [longbridge/nsh](https://github.com/longbridge/nsh/tree/main/skills)）、[pstack](https://github.com/cursor/plugins/tree/main/pstack) 里的 bro |
 | `external` | 别的工具自己装的（值写着装法） | 那个工具自己管 | colab-operator、ego-browser、wayne-herdr-mods |
 
 ```bash
