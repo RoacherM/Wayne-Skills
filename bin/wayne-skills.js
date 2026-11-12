@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // Keep this machine's global skills equal to global/skills.json.
 //
-// Every skill lives at ~/.agents/skills/<name>. Codex, Pi and Grok read that directory themselves. Claude Code
-// reads ~/.claude/skills and Antigravity reads ~/.gemini/config/skills, so each gets a link per skill.
+// Every skill lives at ~/.agents/skills/<name>. Codex, Pi, Epi and Factory Droid read that directory themselves.
+// Claude Code reads ~/.claude/skills, Grok reads ~/.grok/skills, and Antigravity reads ~/.gemini/config/skills,
+// so each installed agent gets a link per skill.
 //
 // The manifest has three kinds of entry:
 //   links    ~/.agents/skills/<name> is a symlink to a local checkout (this repo, or another repo). Edits are live.
@@ -28,6 +29,7 @@ export const MANIFEST = join(REPO, 'global', 'skills.json');
 /** Agents that need a link next to ~/.agents/skills. `home` decides whether the agent is installed. */
 export const LINKED_AGENTS = [
   { id: 'claude-code', home: '.claude', skills: '.claude/skills' },
+  { id: 'grok', home: '.grok', skills: '.grok/skills' },
   { id: 'antigravity', home: '.gemini/antigravity', skills: '.gemini/config/skills' },
 ];
 

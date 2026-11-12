@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Install global/AGENTS.md and global/MEMORY.md into ~/.agents/, then point every agent's global
-# instruction slot at ~/.agents/AGENTS.md (Claude Code, Codex, Pi, Factory Droid, Gemini CLI / Antigravity).
+# instruction slot at ~/.agents/AGENTS.md (Claude Code, Codex, Pi, Factory Droid, Grok, Gemini CLI / Antigravity).
 # Also copies corrections/README.md to ~/.agents/corrections/README.md. Idempotent; rerun after every edit.
 #   bash global/link.sh            install
 #   bash global/link.sh --remove   remove the copies and the links that point at AGENTS.md (backups untouched)
@@ -17,6 +17,7 @@ TARGETS=(
   "$HOME/.codex/AGENTS.md"
   "$HOME/.pi/agent/AGENTS.md"
   "$HOME/.factory/AGENTS.md"
+  "$HOME/.grok/AGENTS.md"
   "$HOME/.gemini/GEMINI.md"
 )
 if [[ "${1:-}" == "--remove" ]]; then

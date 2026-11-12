@@ -110,7 +110,7 @@ test('strays lists skills outside the manifest without touching them', () => {
   assert.ok(existsSync(join(home, '.agents/skills/other-tool/SKILL.md')));
 });
 
-test('global/link.sh copies AGENTS.md, MEMORY.md, and corrections/README.md and links Claude, Codex, Pi, Factory Droid, and Antigravity', () => {
+test('global/link.sh copies AGENTS.md, MEMORY.md, and corrections/README.md and links Claude, Codex, Pi, Factory Droid, Grok, and Antigravity', () => {
   const home = fresh();
   const linkSh = join(REPO, 'global/link.sh');
   const res = spawnSync('bash', [linkSh], { encoding: 'utf8', env: { ...process.env, HOME: home } });
@@ -125,6 +125,7 @@ test('global/link.sh copies AGENTS.md, MEMORY.md, and corrections/README.md and 
     '.codex/AGENTS.md',
     '.pi/agent/AGENTS.md',
     '.factory/AGENTS.md',
+    '.grok/AGENTS.md',
     '.gemini/GEMINI.md',
   ];
   for (const rel of targets) {

@@ -12,7 +12,7 @@
 | `implicit-state-machines` | 原样一句提示词：找出应用里所有隐式状态机，选同时提升 UX、DX、AX 且不破坏现有功能的方案 | 无 |
 | `deslop` | 给已有中文文本去 AI 味：删空话、模板句、翻译腔，理顺主语、术语和段落，保留原意和事实 | 无 |
 | `unslop-ui` | 把「一看就是 AI 生成」的界面改成有自己性格的设计：先审出 slop，定方向，再按间距、颜色、图标、文案、字体、布局、细节、画面、动效九遍改。可拍网页快照、可出 10 秒 story 视频。本地加了一份审美参考 `references/recent.md`（[recent.design](https://recent.design) 精选作品的共同做法）和拉取最新精选的 `scripts/recent.mjs`。原作者 [Damir Sokolovsky](https://github.com/heydamir/unslop)，CC BY 4.0 | 无；快照和视频要 Playwright + Chromium，视频还要 ffmpeg |
-| `vibe-coding` | 通用编码与项目工程规范：代码品味（按概念拆文件、无 boolean 开关、信任边界校验、删旧路径）、两级验证（`oxlint` / `ruff` / `shellcheck` 毫秒级静态快检 + `ub-mode` 结构与变异门禁）、目录边界（`code / test / dev / probe / bench`）、极简仓库 `AGENTS.md` 模板、活文档与接口设计（OpenAPI + Cloudflare Nimbus）、统一评审规则与评审执行器（`scripts/review.sh` + 门禁钩子）、以及 Issue 自动修复 5 步闭环（附 `scripts/doc-lint.mjs`） | Node.js ≥ 20；推荐装 `oxlint`、`ruff`、`shellcheck` |
+| `vibe-coding` | 通用编码与项目工程规范：代码品味（按概念拆文件、无 boolean 开关、信任边界校验、删旧路径）、两级验证（`oxlint` / `ruff` / `shellcheck` 毫秒级静态快检 + `ub-mode` 结构与变异门禁）、目录边界（`code / test / dev / probe / bench`）、极简仓库 `AGENTS.md` 模板、活文档与接口设计（OpenAPI + Cloudflare Nimbus）、统一评审规则与评审执行器（`scripts/review.sh` + 门禁钩子）、以及 Issue 自动修复 5 步闭环（附 `scripts/doc-lint.mjs`） | Node.js ≥ 20；`npm i -g oxlint`、`uv tool install ruff`、`brew install shellcheck` |
 | `nowledge-mem` | 用 `nmem` 命令行读写 Nowledge Mem：开工读上下文、搜记忆和对话、存结论；后台 LaunchAgent 每 10 分钟同步 6 个 coding agent 的对话 | Nowledge Mem Desktop（自带 `nmem`）；没有 Desktop 的机器由 `global/nowledge/apply.sh` 用 uv 装 `nmem-cli` 0.10.112 |
 
 ## 全局 skill 清单
@@ -39,8 +39,9 @@ node $W update          # 重新拉 remote 类 skill；也可只写几个名字
 
 | agent | 读哪里 | sync 做什么 |
 |---|---|---|
-| Codex、Pi、Epi、Factory Droid、Grok | `~/.agents/skills` | 什么都不用 |
+| Codex、Pi、Epi、Factory Droid | `~/.agents/skills` | 什么都不用 |
 | Claude Code | `~/.claude/skills` | 有 `~/.claude` 才建软链 |
+| Grok | `~/.grok/skills` | 有 `~/.grok` 才建软链 |
 | Antigravity | `~/.gemini/config/skills` | 有 `~/.gemini/antigravity` 才建软链 |
 
 不要直接跑 `npx skills add` 不带 `-a`，也不要跑 `npx skills update -g`：这两种情况下 skills CLI 会把 skill 装给所有「home 下有目录」的 agent，并给每个 agent 新建 `skills` 目录，下次更新又把这些目录当成已安装的 agent，目录越积越多（2026-09-29 清掉过 52 个）。安装器只传 `-a codex`（只写 `~/.agents/skills` 那一份），链接自己建。
@@ -52,7 +53,7 @@ node $W update          # 重新拉 remote 类 skill；也可只写几个名字
 - [`global/MEMORY.md`](global/MEMORY.md)（拷到 `~/.agents/MEMORY.md`，按需读取）：按 `界面与原型 / 编码与验证 / 文档与沟通 / 环境与配额` 四节沉淀个人工作习惯与跨项目历史纠偏记录，避免常驻规则越积越重。
 
 ```bash
-bash global/link.sh            # 拷 AGENTS.md / MEMORY.md 到 ~/.agents/，软链到 ~/.claude/CLAUDE.md、~/.codex/AGENTS.md、~/.pi/agent/AGENTS.md、~/.factory/AGENTS.md、~/.gemini/GEMINI.md；corrections/README.md 拷到 ~/.agents/corrections/
+bash global/link.sh            # 拷 AGENTS.md / MEMORY.md 到 ~/.agents/，软链到 ~/.claude/CLAUDE.md、~/.codex/AGENTS.md、~/.pi/agent/AGENTS.md、~/.factory/AGENTS.md、~/.grok/AGENTS.md、~/.gemini/GEMINI.md；corrections/README.md 拷到 ~/.agents/corrections/
 bash global/link.sh --remove   # 清理上述副本与指向 AGENTS.md 的软链（.bak 备份不动）
 ```
 
@@ -77,9 +78,8 @@ bash global/claude/apply.sh --check    # 只看哪些键不同，不改文件
 长期记忆统一走 `nowledge-mem` skill 和 `nmem` 命令行，不再用 Nowledge Mem 官方给每个工具各装一个的插件——不要装它们，会和这里的 skill、后台同步重复。
 
 ```bash
-node bin/wayne-skills.js sync        # skill 软链进 ~/.agents/skills，各 agent 自动可见
-bash global/link.sh                 # AGENTS.md 里的「## Memory and corrections」段告诉 agent 何时调用
-bash global/nowledge/apply.sh       # 确认 nmem 可用，装 LaunchAgent：每 10 分钟同步 6 个 agent 的对话
+node bin/wayne-skills.js sync        # skill 软链进 ~/.agents/skills，各 agent 按 description 自动触发
+bash global/nowledge/apply.sh        # 确认 nmem 可用，装 LaunchAgent：每 10 分钟同步 6 个 agent 的对话
 bash global/nowledge/apply.sh --check    # 只看状态：nmem、doctor、plist、job、日志最后 5 行
 bash global/nowledge/apply.sh --remove   # 卸载 LaunchAgent（日志保留）
 ```

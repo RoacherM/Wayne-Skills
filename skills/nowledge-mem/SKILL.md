@@ -39,7 +39,7 @@ nmem --json t show <thread_id> -n 8 --offset 0 --content-limit 1200   # 只读�
 
 存模式和跨仓决定，不存单次事件细节：写明是什么情形、用户先期待什么、决定了什么和原因。只约束单个仓库的决定写进那个仓库的文档（如 `docs/decisions.md`）；跨仓库通用的模式、根因、验证过的做法和用户偏好才存这里。不存临时进度、从代码或 git 能直接看到的事、密钥、token 和个人隐私。
 
-记忆只在被搜到时才起作用；不能再犯的事要按 `~/.agents/corrections/README.md` 当轮写进 `AGENTS.md`。
+记忆只在被搜到时才起作用；不能再犯的事要按 `~/.agents/corrections/README.md` 当轮写进对应的 `AGENTS.md`、`MEMORY.md` 或 Skill。
 
 ```bash
 nmem --json m add "<情形 + 用户先期待什么 + 决定与原因 + 适用范围，单独读也能看懂>" -t "<短标题>" -i <0.3–0.9> --source-app <工具名> -l <项目名>
