@@ -13,7 +13,7 @@ description: 用 nmem 命令行读写 Nowledge Mem 记忆：开工时读上下�
 
 `command -v nmem` 找不到，或 `nmem status` 失败时：停下，告诉用户跑
 `bash ~/Projects/sides/wayne-skills/global/nowledge/apply.sh`。
-不要自己用 pip 或 uv 安装 nmem，不要改 `~/.nowledge-mem/config.json`。
+不自己用 pip 或 uv 安装 nmem，也不改 `~/.nowledge-mem/config.json`，以免装出两套命令行或改坏本机连接配置。
 
 ## 1. 开工时读上下文（每个会话一次）
 
@@ -37,15 +37,15 @@ nmem --json t show <thread_id> -n 8 --offset 0 --content-limit 1200   # 只读�
 
 ## 3. 存
 
-存：做出的决定和理由；踩过的坑和根因；验证过的做法；用户明确说过的偏好。
-不存：临时进度；从代码或 git 能直接看到的事；密钥、token、个人隐私。
+存模式和跨仓决定，不存单次事件细节：写明是什么情形、用户先期待什么、决定了什么和原因。只约束单个仓库的决定写进那个仓库的文档（如 `docs/decisions.md`）；跨仓库通用的模式、根因、验证过的做法和用户偏好才存这里。不存临时进度、从代码或 git 能直接看到的事、密钥、token 和个人隐私。
+
+记忆只在被搜到时才起作用；不能再犯的事要按 `~/.agents/corrections/README.md` 当轮写进 `AGENTS.md`。
 
 ```bash
-nmem --json m add "<结论 + 原因 + 适用范围，单独读也能看懂>" -t "<短标题>" -i <0.3–0.9> --source-app <工具名> -l <项目名>
+nmem --json m add "<情形 + 用户先期待什么 + 决定与原因 + 适用范围，单独读也能看懂>" -t "<短标题>" -i <0.3–0.9> --source-app <工具名> -l <项目名>
 ```
 
-存之前先 `m search` 一次。已有相近的记忆时，用 `nmem m update <id>` 改它，或用 `nmem m supersede` 把旧记忆连到新记忆，不要重复存。
-用户说「记住这个」时直接存，然后报告标题和 id。
+一个模式只留一条。存之前先 `m search` 一次；已有相近的记忆时，用 `nmem m update <id>` 改它，或用 `nmem m supersede` 把旧记忆连到新记忆，避免同义条目越积越多。用户说「记住这个」时直接存，然后报告标题和 id。
 
 ## 4. 对话不用手动存
 

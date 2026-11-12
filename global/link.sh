@@ -13,6 +13,7 @@ TARGETS=(
   "$HOME/.claude/CLAUDE.md"
   "$HOME/.codex/AGENTS.md"
   "$HOME/.pi/agent/AGENTS.md"
+  "$HOME/.factory/AGENTS.md"
 )
 if [[ "${1:-}" == "--remove" ]]; then
   for t in "${TARGETS[@]}"; do
