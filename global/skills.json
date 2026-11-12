@@ -13,16 +13,13 @@
   "remote": {
     "anthropics/skills": ["skill-creator"],
     "666ghj/auday-skill": ["auday"],
+    "longbridge/nsh": ["nsh", "nsh-design-guides"],
     "https://open.feishu.cn/lark-cli/skills/regular": ["lark-doc", "lark-shared"],
-    "https://github.com/cursor/plugins/tree/main/harness/pstack/claude-code/skills": ["unslop", "technical-writing", "ketchup", "bro", "automate-me"]
-  },
-  "files": {
-    "~/.agents/docs/harness": "cursor/plugins/harness/pstack/claude-code/docs/harness"
+    "https://github.com/cursor/plugins/tree/main/harness/pstack/claude-code/skills": ["bro"]
   },
   "external": {
     "colab-operator": "随 colab 命令行（google-colab-cli）安装",
     "ego-browser": "随 ego lite 应用安装",
-    "rex": "rex skill setup",
     "wayne-herdr-mods": "node ~/Projects/sides/herdr-relay/dist/wayne-herdr-mods.mjs install"
   }
 }

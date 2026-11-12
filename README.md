@@ -1,30 +1,29 @@
 # Wayne Skills
 
-我的全局 skill 清单和我自己写的 skill。本机 `~/.agents/skills` 里装什么，只由 [`global/skills.json`](global/skills.json) 决定；`bin/wayne-skills.js sync` 让本机和清单一致，并给 Claude Code / Codex / Pi / Grok / Antigravity 建链接。
+我的全局 skill 清单和我自己写的 skill。本机 `~/.agents/skills` 里装什么，只由 [`global/skills.json`](global/skills.json) 决定；`bin/wayne-skills.js sync` 让本机和清单一致，并给 Claude Code / Codex / Pi / Epi / Factory Droid / Grok / Antigravity 准备链接。
 
 ## 本仓库的 skill
 
 | skill | 做什么 | 依赖 |
 |---|---|---|
 | `terminal-diagrams` | 用户在终端里读回复时，agent 不发 ```mermaid 源码，而是用 `mmd2txt` 渲染成框线字符图再贴 | [`mmd2txt`](https://github.com/RoacherM/mmd2txt)，`npm install -g github:RoacherM/mmd2txt` |
-| `ub-mode` | 写代码、改代码、审代码时用三件外部量具打分：crapper（复杂度×覆盖率，CRAP < 10）、dryer（结构重复）、mutator（变异测试）。工具是 Uncle Bob 的 [crapper](https://github.com/unclebob/crapper) / [dryer](https://github.com/unclebob/dryer) / [mutator](https://github.com/unclebob/mutator)（0BSD），源码内置在 `skills/ub-mode/tools/`，`scripts/ub` 首次运行用 uv 在 `~/.cache/ub-mode` 建一个共用环境 | [uv](https://docs.astral.sh/uv/)、Python 3.11–3.14（uv 会自己下载） |
-| `herdr` | 在 Herdr 里控制分屏、终端和 Agent。先判断环境：Herdr.app（`herdr-app` + `hc`）走 `references/herdr-app.md` 里的「左 1 + 右 3」开发流程；终端版 `herdr` 走 `herdr --skill` 的官方说明 | Herdr.app 或 herdr |
+| `ub-mode` | 写代码、改代码时用三件外部量具打分：crapper（复杂度×覆盖率，CRAP < 10）、dryer（结构重复）、mutator（变异测试）。工具是 Uncle Bob 的 [crapper](https://github.com/unclebob/crapper) / [dryer](https://github.com/unclebob/dryer) / [mutator](https://github.com/unclebob/mutator)（0BSD），源码内置在 `skills/ub-mode/tools/`，`scripts/ub` 首次运行用 uv 在 `~/.cache/ub-mode` 建一个共用环境 | [uv](https://docs.astral.sh/uv/)、Python 3.11–3.14（uv 会自己下载） |
+| `herdr` | 在 Herdr 里控制分屏、终端和 Agent。先判断环境：Herdr.app（`herdr-app` + `hc`）走 `references/herdr-app.md` 里的分屏开发流程（日常左 1 + 右 2，按需加开 Reviewer）；终端版 `herdr` 走 `herdr --skill` 的官方说明 | Herdr.app 或 herdr |
 | `implicit-state-machines` | 原样一句提示词：找出应用里所有隐式状态机，选同时提升 UX、DX、AX 且不破坏现有功能的方案 | 无 |
 | `deslop` | 给已有中文文本去 AI 味：删空话、模板句、翻译腔，理顺主语、术语和段落，保留原意和事实 | 无 |
 | `unslop-ui` | 把「一看就是 AI 生成」的界面改成有自己性格的设计：先审出 slop，定方向，再按间距、颜色、图标、文案、字体、布局、细节、画面、动效九遍改。可拍网页快照、可出 10 秒 story 视频。原作者 [Damir Sokolovsky](https://github.com/heydamir/unslop)，CC BY 4.0 | 无；快照和视频要 Playwright + Chromium，视频还要 ffmpeg |
-| `vibe-coding` | 项目工程与文档规范：目录边界（`code / test / dev / probe / bench`）、活文档与接口设计（OpenAPI + Cloudflare Nimbus）、以及面向 Agent 自动开发、测试、Issue 跟踪与修复的 6 态闭环（附 `scripts/doc-lint.mjs`） | Node.js ≥ 22 |
+| `vibe-coding` | 项目工程与开发规范：目录边界（`code / test / dev / probe / bench`）、仓库 `AGENTS.md`「开发规范」模板、活文档与接口设计（OpenAPI + Cloudflare Nimbus）、统一评审规则与评审执行器（`scripts/review.sh` + 门禁钩子）、以及面向 Agent 自动开发、测试、Issue 跟踪与修复的 5 步闭环与 7 态 Issue 队列（附 `scripts/doc-lint.mjs`） | Node.js ≥ 20 |
 | `nowledge-mem` | 用 `nmem` 命令行读写 Nowledge Mem：开工读上下文、搜记忆和对话、存结论；后台 LaunchAgent 每 10 分钟同步 6 个 coding agent 的对话 | Nowledge Mem Desktop（自带 `nmem`）；没有 Desktop 的机器由 `global/nowledge/apply.sh` 用 uv 装 `nmem-cli` 0.10.112 |
 
 ## 全局 skill 清单
 
-`global/skills.json` 列出本机全部全局 skill，分四类：
+`global/skills.json` 列出本机全部全局 skill，分三类（另支持可选 `files` 拉取外部支撑目录）：
 
 | 类别 | `~/.agents/skills/<name>` 是什么 | 怎么更新 | 现在有 |
 |---|---|---|---|
-| `links` | 软链到本地仓库（相对路径指本仓库，`~/` 指 home） | 改仓库就生效 | 本仓库 7 个、storyforge |
-| `remote` | skills CLI 从 GitHub / 网站拷来的副本 | `update` | skill-creator、auday、lark-doc、lark-shared、[pstack](https://github.com/cursor/plugins/tree/main/pstack) 里的 unslop、technical-writing、ketchup、bro、automate-me（Claude Code 适配版） |
-| `external` | 别的工具自己装的（值写着装法） | 那个工具自己管 | rex、wayne-herdr-mods |
-| `files` | 不是 skill：从 GitHub 拉一个目录放到指定位置，给 skill 引用自身目录以外的文件用 | `update` | `~/.agents/docs/harness`（pstack 的 Claude Code 适配说明，technical-writing 要读） |
+| `links` | 软链到本地仓库（相对路径指本仓库，`~/` 指 home） | 改仓库就生效 | 本仓库 8 个、storyforge |
+| `remote` | skills CLI 从 GitHub / 网站拷来的副本 | `update` | skill-creator、auday、lark-doc、lark-shared、[pstack](https://github.com/cursor/plugins/tree/main/pstack) 里的 bro |
+| `external` | 别的工具自己装的（值写着装法） | 那个工具自己管 | colab-operator、ego-browser、wayne-herdr-mods |
 
 ```bash
 W=~/Projects/sides/wayne-skills/bin/wayne-skills.js
@@ -40,7 +39,7 @@ node $W update          # 重新拉 remote 类 skill；也可只写几个名字
 
 | agent | 读哪里 | sync 做什么 |
 |---|---|---|
-| Codex、Pi、Grok | `~/.agents/skills` | 什么都不用 |
+| Codex、Pi、Epi、Factory Droid、Grok | `~/.agents/skills` | 什么都不用 |
 | Claude Code | `~/.claude/skills` | 有 `~/.claude` 才建软链 |
 | Antigravity | `~/.gemini/config/skills` | 有 `~/.gemini/antigravity` 才建软链 |
 
@@ -51,11 +50,11 @@ node $W update          # 重新拉 remote 类 skill；也可只写几个名字
 `global/AGENTS.md` 是给所有 coding agent 的全局指令，一份文件，换机器时 clone 仓库后跑一次就同步：
 
 ```bash
-bash global/link.sh            # 拷到 ~/.agents/AGENTS.md，再软链到 ~/.claude/CLAUDE.md、~/.codex/AGENTS.md、~/.pi/agent/AGENTS.md；原有文件留作 .bak-日期；corrections/README.md 拷到 ~/.agents/corrections/
+bash global/link.sh            # 拷到 ~/.agents/AGENTS.md，再软链到 ~/.claude/CLAUDE.md、~/.codex/AGENTS.md、~/.pi/agent/AGENTS.md、~/.factory/AGENTS.md；原有文件留作 .bak-日期；corrections/README.md 拷到 ~/.agents/corrections/
 bash global/link.sh --remove   # 只删指向本文件的软链
 ```
 
-写法按 Anthropic 的 Fable 5.1 提示指南和 OpenAI 的 GPT-6 Astra 模型指南：两代模型都会严格照做，所以只写 harness 没说的事（回复语言、改动范围、密钥、终端画图、git 边界），不重复系统提示里已有的段落，不写互相矛盾的规则。Claude Code 自带的 Fable 5.1 提示块已覆盖进度汇报、并行调用、完成整个任务、交付范围、排版密度，这些不再写。
+写法参照 Anthropic 的《Prompting Claude Fable 5》与《Prompting Claude Fable 5.2》指南：全局 `AGENTS.md` 只写跨仓库硬约束（边界、汇报格式、记忆与纠正），说明原因、具体列出需确认的动作、不堆绝对禁令；开发规范放在 `vibe-coding` 模板里，初始化项目时带进各仓自己的 `AGENTS.md`。
 
 ## Claude Code 设置
 
@@ -79,7 +78,7 @@ bash global/claude/apply.sh --check    # 只看哪些键不同，不改文件
 
 ```bash
 node bin/wayne-skills.js sync        # skill 软链进 ~/.agents/skills，各 agent 自动可见
-bash global/link.sh                 # AGENTS.md 里的「## Memory」段告诉 agent 怎么用
+bash global/link.sh                 # AGENTS.md 里的「## Memory and corrections」段告诉 agent 何时调用
 bash global/nowledge/apply.sh       # 确认 nmem 可用，装 LaunchAgent：每 10 分钟同步 6 个 agent 的对话
 bash global/nowledge/apply.sh --check    # 只看状态：nmem、doctor、plist、job、日志最后 5 行
 bash global/nowledge/apply.sh --remove   # 卸载 LaunchAgent（日志保留）
@@ -92,7 +91,7 @@ bash global/nowledge/apply.sh --remove   # 卸载 LaunchAgent（日志保留）
 ```bash
 git clone https://github.com/RoacherM/Wayne-Skills ~/Projects/sides/wayne-skills && cd ~/Projects/sides/wayne-skills
 node bin/wayne-skills.js sync                     # 本仓库的 skill 软链进 ~/.agents/skills，改 SKILL.md 即生效
-npm test                                          # 安装器测试，无依赖
+npm test                                          # 安装器、Nowledge、doc-lint 与统一评审脚本测试，无外部依赖
 ```
 
 加新 skill：建 `skills/<name>/SKILL.md`（可带 `evals/evals.json`），在 `global/skills.json` 的 `links` 里加一行，跑 `sync`。
