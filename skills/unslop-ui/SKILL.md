@@ -13,7 +13,9 @@ metadata:
 
 unslop was created by Damir Sokolovsky ([@heydamir](https://x.com/heydamir)), who started the Unslopping series on X. It is licensed under CC BY 4.0, so keep this credit in any copy or adaptation.
 
-This copy is installed as `unslop-ui`, because the `unslop` skill on this machine edits text instead of screens. Everything below is unchanged from upstream.
+This copy is installed as `unslop-ui`, so its name clearly marks screen design rather than prose editing (`deslop`). Everything below is unchanged from upstream.
+
+One local addition, not from upstream: before you write the direction, and again before the Visuals pass, read [references/recent.md](references/recent.md). It holds notes on what hand-picked current work does, and a script (`scripts/recent.mjs`) that downloads the newest picks from recent.design so you can look at them.
 
 Vibecoded UI fails in the same predictable ways. Every surface glows, every label has an emoji, spacing is whatever the model typed that day, and the copy shouts. Unslopping fixes the craft and keeps the product. The features, content and order of sections stay. What changes is that every size, color, word and image becomes deliberate.
 

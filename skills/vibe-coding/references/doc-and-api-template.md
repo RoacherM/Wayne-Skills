@@ -3,11 +3,11 @@
 ## 1. 活文档的两种规模形态
 
 - **小型/单体仓库（如 `herdr-relay`、`native-editor`）**：根目录单文件 `DESIGN.md`。
-- **中大型/多模块仓库（如 `story-forge-agent`、`agent-forge`、`epi`）**：按子系统拆分为 `docs/subsystems/<module>.md`，**每个子系统只允许有一篇活文档**。线上排查（audit）或阶段性 spike 结束后，证实的机制合入对应子系统文档，待办拆进 `docs/issues/`，严禁在 `docs/` 下留下 `xxx-fixes.md`、`xxx-spike.md`、`xxx-v2-plan.md` 等并列碎片。
+- **中大型/多模块仓库（如 `story-forge-agent`、`agent-forge`、`epi`）**：按子系统拆分为 `docs/subsystems/<module>.md`，每个子系统只维护一篇当前活文档，避免多份文档说法打架。线上排查（audit）或阶段性 spike 结束后，已证实的机制并入对应子系统文档，待办拆进 `docs/issues/`，不在 `docs/` 下留下 `xxx-fixes.md`、`xxx-spike.md`、`xxx-v2-plan.md` 等并列碎片，以免检索时读到过期结论。
 
 ## 2. Nimbus 兼容的活文档骨架
 
-所有 `DESIGN.md` 与 `docs/subsystems/<module>.md` 顶部必须包含 YAML Frontmatter（`title` 与 1–2 句话的 `description`），既供仓库内 Agent 快速路由，也供 [Cloudflare Nimbus](https://github.com/cloudflare/nimbus) 直接生成 `llms.txt` 与页面：
+`DESIGN.md` 与 `docs/subsystems/<module>.md` 顶部都放 YAML Frontmatter（`title` 与 1–2 句话的 `description`），既供仓库内 Agent 快速路由，也供 [Cloudflare Nimbus](https://github.com/cloudflare/nimbus) 直接生成 `llms.txt` 与页面：
 
 ```markdown
 ---
@@ -24,7 +24,7 @@ description: <1-2 句话概括本模块负责的边界、核心机制与对外�
 <模块划分与调用链。终端展示用 mmd2txt 框线图，文档站可用代码块。>
 
 ## 协议与契约（含新旧混用）
-<线协议、事件格式、状态机转移。必须写明：旧客户端 + 新服务端、新客户端 + 旧服务端时的兼容行为。>
+<线协议、事件格式、状态机转移。写明旧客户端 + 新服务端、新客户端 + 旧服务端时的兼容行为，避免滚动升级时中断。>
 
 ## 关键决定与踩坑记录（Verified Facts & Traps）
 <把实测踩过的坑直接写在对应决定旁边，标明外部依赖版本号与日期，如 `nsh 0.3.0`、`Pi 1.3.0`。>
@@ -43,7 +43,7 @@ description: <1-2 句话概括本模块负责的边界、核心机制与对外�
 凡是有 HTTP / WebSocket / RPC 对外接口的仓库：
 
 ### 3.1 `docs/api/openapi.yaml` 是 HTTP 接口的唯一事实源
-1. **必须列出 PROD 与 DEV 完整地址**：
+1. **列出 PROD 与 DEV 完整地址**，省去对接方和调试脚本猜环境域名：
    ```yaml
    openapi: 3.1.0
    info:
@@ -55,7 +55,7 @@ description: <1-2 句话概括本模块负责的边界、核心机制与对外�
      - url: https://dev.example.com
        description: DEV 测试环境
    ```
-2. **示例命令使用完整 URL**：补充在 Markdown 里的 `curl` 示例必须写出完整 `https://...`（PROD 与 DEV 对照），禁止只写 `$BASE_URL/api/...` 相对路径让对接人自己猜。
+2. **示例命令写出完整 URL**：补充在 Markdown 里的 `curl` 示例写出完整 `https://...`（PROD 与 DEV 对照），不只写 `$BASE_URL/api/...` 相对路径，方便直接复制运行。
 3. **配零费用契约测试**：在 `test/` 或 `tools/*-api-cases/` 中用真实 `server` + 本地 `fake-model` 跑通 `openapi.yaml` 里的全部端点，防止文档与代码漂移。
 
 ### 3.2 使用 `cloudflare/nimbus` 构建人机双发文档站（按需启用）

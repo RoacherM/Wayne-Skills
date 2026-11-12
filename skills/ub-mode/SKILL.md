@@ -1,6 +1,6 @@
 ---
 name: ub-mode
-description: Measure code with crapper (complexity × coverage), dryer (duplication) and mutator (mutation tests). Use when writing, changing or reviewing code.
+description: Measure code with crapper (complexity × coverage), dryer (duplication) and mutator (mutation tests). Use when writing or changing code.
 ---
 
 # ub-mode
@@ -25,7 +25,7 @@ The first call builds one shared Python environment with `uv` in `~/.cache/ub-mo
 
 ## Using them
 
-You choose when to run them, on what, and what to do with the result. These facts shape the choice:
+You choose when to run them, on what, and what to do with the result. Independent diff review follows the `vibe-coding` skill (`统一评审规则`): pre-review checks already run the test suite, so skip full crapper and mutator runs during review unless the user asks, to avoid rerunning slow suites in reviewer sessions. These facts shape the choice:
 
 - CRAP is never lower than CC. A function with CC ≥ 10 cannot pass through tests alone; it needs a split.
 - Without coverage, CRAP is blank. A full crapper run reruns the project's tests to get coverage (`--use-existing-coverage` reads reports on disk; `--no-coverage` scores CC only, in seconds). A slow suite makes the full run slow.

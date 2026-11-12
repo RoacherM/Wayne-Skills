@@ -43,9 +43,9 @@ hooks(join(homedir(), '.claude', 'settings.json'), '*', {});
 hooks(join(homedir(), '.codex', 'hooks.json'), '.*', { statusMessage: 'Checking reply for raw Mermaid...' });
 if (!remove) {
   console.log(`
-Add this line to each agent's global instruction file (~/.claude/CLAUDE.md, ~/.codex/AGENTS.md) if you want the rule stated there too:
+Add this rule to wayne-skills/global/AGENTS.md (then run bash global/link.sh) if you want every session to load it:
 
-- Diagrams: the user reads in a terminal. Never send a \`\`\`mermaid fence. Use the terminal-diagrams skill: write the diagram to a scratch .mmd file, run \`mmd2txt FILE\` (exit 2 = too wide, split it), paste the output in a \`\`\`text fence. Unsupported kinds fall back to a text tree.
+- Diagrams: the user reads in a terminal, which does not render raw \`\`\`mermaid fences. Use the terminal-diagrams skill: write the diagram to a scratch .mmd file, run \`mmd2txt FILE\` (exit 2 = too wide, split it), and paste the output in a \`\`\`text fence; fall back to a text tree for unsupported kinds.
 
 Hooks load on the next agent session (Codex asks once to trust the new hook).`);
 }

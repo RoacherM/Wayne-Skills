@@ -3,16 +3,16 @@
 在 **Herdr.app**（`__CFBundleIdentifier=dev.herdr.app`）中，用同 Tab 分屏把**思考控场、编码实现、对抗审查、真实终端测试**放在同一个视野内。
 
 核心原则（结合 Addy Osmani《Critical thinking when agents do the work》）：
-- **人只有一双眼睛（One Pair of Eyes）**：绝不把子任务丢进隐藏的新 Tab（`tab.new`）。固定在**当前 Tab 内分屏**（`pane.split`），省去来回切 Tab 的调度税（Orchestration Tax）。
+- **人只有一双眼睛（One Pair of Eyes）**：默认在**当前 Tab 内分屏**（`pane.split`），不开新窗口或隐藏的新 Tab（`tab.new`），除非用户要求；这样所有进展同屏可见，省去来回切换的调度成本。
 - **外包执行，不移交判断（Cognitive Offloading, Not Surrender）**：派单前先立假设与证伪条件，用独立 `Reviewer` 找盲区、用纯 `Terminal` 跑真实命令抓报错，最后由 `Orchestrator` 替用户把输出收敛到真正需要人拍板的隐式决策上。
 
 ---
 
 ## 1. 布局与模式最佳实践（开发模式 vs 测试模式）
 
-### 1.1 开发模式：左 1 + 右 3 四角色布局（`Orchestrator` / `Worker` / `Reviewer` / `Terminal`）
+### 1.1 开发模式：日常左 1 + 右 2，按需加开 Reviewer 成右 3
 
-开发新功能、重构或复杂问题攻坚时，推荐在当前 Tab 构建 **左 1 + 右 3（右侧上下三栈）** 的四角色同屏布局：
+开发新功能、重构或复杂问题攻坚时，日常用「左 1 + 右 2（`Worker` + `Terminal`）」，避免每个小步都起审查会话拖慢节奏；按 `vibe-coding` Skill「统一评审规则」需要全量评审或用户要求时，再加开 `Reviewer` 组成 **左 1 + 右 3（右侧上下三栈）** 布局：
 
 ```text
 +-----------------------------------+-----------------------------------+
@@ -31,11 +31,11 @@
 |---|---|---|---|
 | **Orchestrator** | 左屏（`$MY_TERMINAL`） | 主对话 Agent | 与用户聊方案、澄清模糊意图（防 Intent Debt）、派单前先立假设与验收标准、调度右侧三屏、汇总证据并守住用户注意力。 |
 | **Worker** | 右上（`$WORKER_TERM`） | 交互式编码 Agent（`epi` / `claude` / `codex`） | 接收明确边界与一手文件路径，专注完成代码实现或文档编写，把改动与假定写入 `/tmp/herdr-<task>/worker.md`。 |
-| **Reviewer** | 右中（`$REVIEWER_TERM`） | 交互式独立审查 Agent（建议异构模型，如 `gpt-6.1-sol` / `deepseek-flash`） | **全新独立上下文**（不参与写代码，无沉没成本）：对照原需求与 `git diff` 做证伪式 Review，专找边界漏判、静默吞错与隐式决定，写入 `/tmp/herdr-<task>/review.md`。 |
+| **Reviewer** | 右中（`$REVIEWER_TERM`，按需） | 独立审查 Agent（按 `vibe-coding` Skill「统一评审规则」执行） | 功能完成需全量评审或用户点名审查时启用（中途小步不开，避免同一段代码审两遍），审冻结的全量 `git diff`，结果写入 `/tmp/herdr-<task>/review.md`。 |
 | **Terminal** | 右下（`$TERM_ID`） | **纯 `zsh` 终端（不起 Agent）** | 直接执行确定性 shell 命令：跑单测/集成测试、在 `/tmp` 空目录实测独立脚本、跑 `ub-mode` 量具或线上只读核查，零 LLM 转发开销，直接暴露真实报错。 |
 
-#### 一键构建「左 1 + 右 3」布局命令
-先通过铁律 2 反查出左屏自身的 `$MY_PANE`，再依次向右、向下、向下切出右侧三屏：
+#### 分屏布局命令（日常右 2，按需加开 Reviewer 成右 3）
+先按规则 2 反查出左屏自身的 `$MY_PANE`，再按需切出右侧分屏：
 
 ```bash
 # 1. 从左屏向右切出 Worker（右上）
@@ -43,7 +43,7 @@ S1=$(herdr-app do pane.split --direction right --pane "$MY_PANE")
 WORKER_PANE=$(printf '%s' "$S1" | node -pe 'JSON.parse(fs.readFileSync(0,"utf8")).pane')
 WORKER_TERM=$(printf '%s' "$S1" | node -pe 'JSON.parse(fs.readFileSync(0,"utf8")).terminal')
 
-# 2. 从 Worker 向下切出 Reviewer（右中）
+# 2. 从 Worker 向下切出 Reviewer（右中；仅需评审时执行，日常右 2 跳过此步直接切出 Terminal）
 S2=$(herdr-app do pane.split --direction down --pane "$WORKER_PANE")
 REVIEWER_PANE=$(printf '%s' "$S2" | node -pe 'JSON.parse(fs.readFileSync(0,"utf8")).pane')
 REVIEWER_TERM=$(printf '%s' "$S2" | node -pe 'JSON.parse(fs.readFileSync(0,"utf8")).terminal')
@@ -64,17 +64,17 @@ TERM_ID=$(printf '%s' "$S3" | node -pe 'JSON.parse(fs.readFileSync(0,"utf8")).te
 
 ---
 
-## 2. 三条硬性技术铁律（避开其他模型的常见错位）
+## 2. 三条技术规则（避开常见错位）
 
-### 铁律 1：只用 `herdr-app` + `hc`，禁用旧版 `herdr` CLI
+### 规则 1：只用 `herdr-app` + `hc`，不混用终端版 `herdr` CLI
 - `herdr-app`（`~/.local/bin/herdr-app`）：管理 GUI 布局树（`spaces` → `tabs` → `panes` → `terminals`），负责分屏、聚焦与关闭分屏。
 - `hc`（`~/.local/bin/hc`，即 `herdr-core`）：管理持久终端（`t...`）、发送输入（`hc send`）、等待 Agent 回合结束（`hc wait`）、读取屏幕（`hc read`）及 OSC 7501 状态（`idle` / `working` / `done` / `blocked` / `error`）。
-- **禁止**：不要检查 `HERDR_ENV=1`，也不要运行旧版 `herdr status` / `herdr pane` / `herdr agent`（旧版 TUI 的 `~/.config/herdr/herdr.sock` 未运行）。在 Herdr.app 内一律检查 `test -n "${HC_TERMINAL_ID:-}"`。
+- 在 Herdr.app 内检查 `test -n "${HC_TERMINAL_ID:-}"`；不检查 `HERDR_ENV=1`，也不运行终端版 `herdr status` / `herdr pane` / `herdr agent`，因为终端版 TUI 的 `~/.config/herdr/herdr.sock` 在 Herdr.app 下未运行。
 
-### 铁律 2：用 `$HC_TERMINAL_ID` 反查当前分屏并同 Tab 分屏（`pane.split`），严禁 `tab.new`
+### 规则 2：用 `$HC_TERMINAL_ID` 反查当前分屏并同 Tab 分屏（`pane.split`），不开新窗口或新 Tab（除非用户要求）
 其他模型常犯三个错：① 调 `herdr-app do tab.new` 新开 Tab 把子窗口藏到后台；② 把终端 ID `$HC_TERMINAL_ID`（如 `t2j`）当成 `--pane` 传给 `pane.split`；③ 直接取 `herdr-app status` 的 `focused_pane`（用户思考期间点到别的窗口就会分错屏）。
 
-- **必须**用自身环境变量 `$HC_TERMINAL_ID` 在 `herdr-app ls` 中反查自己精确所属的 `MY_SPACE`、`MY_TAB`、`MY_PANE`（`p...`）及同 Tab 已有的兄弟终端：
+- 用自身环境变量 `$HC_TERMINAL_ID` 在 `herdr-app ls` 中反查自己精确所属的 `MY_SPACE`、`MY_TAB`、`MY_PANE`（`p...`）及同 Tab 已有的兄弟终端：
 
 ```bash
 eval "$(herdr-app ls | node -e '
@@ -101,11 +101,11 @@ eval "$(herdr-app ls | node -e '
 ')"
 ```
 
-- 若 `SIBLING_TERMS` 中已有同 Tab 分屏，优先按角色复用；否则对 `$MY_PANE` 分屏（除非用户明确要求新开 Tab，否则**严禁**调 `tab.new`）。
+- 若 `SIBLING_TERMS` 中已有同 Tab 分屏，优先按角色复用；否则对 `$MY_PANE` 分屏。除非用户要求，不开新窗口或调 `tab.new`，以免子任务藏到后台看不见。
 
-### 铁律 3：区分「发给子 Agent」与「直接发给纯 Terminal」，且严禁子窗口 `hc send <主窗口>`
+### 规则 3：区分「发给子 Agent」与「直接发给纯 Terminal」，子窗口不回调 `hc send <主窗口>`
 
-1. **直接操作纯 `Terminal`（`zsh`）时必加 `env -u HC_TERMINAL_ID`**：
+1. **直接操作纯 `Terminal`（`zsh`）时加上 `env -u HC_TERMINAL_ID`**：
    - 当调用方环境变量里有 `HC_TERMINAL_ID` 且目标终端曾跑过 Agent（`status` 非空）时，普通 `hc send` 会自动把文本包成 `<hc from="t...">...</hc>`，导致 `zsh` 报 `parse error`。
    - 等命令跑完用 `hc wait --output`，不用轮询文件。先在后台开始等，再发命令（2026-11-05 实测）：
      ```bash
@@ -121,7 +121,7 @@ eval "$(herdr-app ls | node -e '
      hc run --bg --name test-1 --cwd "$PWD" --label herdr.space="$MY_SPACE" --label herdr.tab="$MY_TAB" -- bash test.sh
      hc wait test-1    # 返回 exit_code；跑完 hc rm test-1
      ```
-2. **操作 `Worker` / `Reviewer` 子 Agent 时严禁让它回调 `hc send <主窗口>`**：
+2. **操作 `Worker` / `Reviewer` 子 Agent 时不让它回调 `hc send <主窗口>`**：
    - `hc send <target>` 会直接往目标终端输入框粘贴文本并按回车（`\r`）；若用户正在左屏 `Orchestrator` 打字，子窗口调 `hc send $MY_TERMINAL` 会把用户写到一半的句子当场截断发出去。`hc send` 会等人停止打字再粘贴，但人打到一半停下来想，也算停顿，所以这个保护不够。
    - **固定做法**：子 Agent 把结果写进 `/tmp/herdr-<task>/*.md` 后自然结束回合；`Orchestrator` 用 `hc wait` 循环等待子 Agent 状态变为 `done` 后直接读文件。
 
@@ -131,15 +131,13 @@ eval "$(herdr-app ls | node -e '
 
 ### 第一步：`Orchestrator` 派单前（先立假设，传一手材料）
 1. **先立假设与证伪条件（Formulate a Hypothesis & Falsifier）**：明确预期结果，以及*“什么反例或报错出现就说明我们错了？”*
-2. **预先定义“什么算验证通过”（Define Verified Upfront）**：以 `Terminal` 跑出的真实退出码、DB 记录、文件 sha256 或边界集统计为准，绝不把“代码/文档看起来写完了”当完成。
+2. **预先定义“什么算验证通过”（Define Verified Upfront）**：以 `Terminal` 跑出的真实退出码、DB 记录、文件 sha256 或边界集统计为准，不把“代码/文档看起来写完了”当完成，避免未跑通就交单。
 3. **传一手路径与原始标识（No Summary Telephone）**：给 `Worker` 和 `Reviewer` 传精确文件路径、行号、commit 或原始会话 ID，不传二道浓缩摘要。
 
-### 第二步：`Worker` 实现 + `Terminal` 实测 + `Reviewer` 独立证伪
+### 第二步：`Worker` 实现 + `Terminal` 实测（按需加 `Reviewer`）
 1. **`Worker`（右上）**：完成代码或独立脚本编写，记录改动点与隐含假设。
 2. **`Terminal`（右下）**：在真实环境或隔离目录（如 `/tmp`）直接跑脚本/测试，检验是否真的能跑通（例如实测独立文档脚本能否在无仓库依赖下跑出 `EXIT:0`）。
-3. **`Reviewer`（右中）**：在独立上下文中启动（如 `epi --approve --model deepseek/deepseek-flash --thinking high` 或 `factory/gpt-6.1-sol`），执行：
-   - **穿透单一绿灯（What Green Proved vs. Missed）**：单条样本跑通后，追问全量分布或边界条件下会不会失效；
-   - **盲区与隐式决策自检（Did I miss anything?）**：挑出实现里替用户暗自做掉的决定（默认值、被吞掉的报错、兼容性取舍），写入 `/tmp/herdr-<task>/review.md`。
+3. **`Reviewer`（右中，按需）**：按 `vibe-coding` Skill「统一评审规则」需要评审或用户要求时启动（日常小步跳过，避免重复审查）。何时审、怎么审、阻塞标准与修复后确认按 `vibe-coding` Skill「统一评审规则」执行，结果写入 `/tmp/herdr-<task>/review.md`。
 
 ```bash
 # Orchestrator 等待 Worker 或 Reviewer 回合结束
