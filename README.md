@@ -7,7 +7,7 @@
 | skill | 做什么 | 依赖 |
 |---|---|---|
 | `terminal-diagrams` | 用户在终端里读回复时，agent 不发 ```mermaid 源码，而是用 `mmd2txt` 渲染成框线字符图再贴 | [`mmd2txt`](https://github.com/RoacherM/mmd2txt)，`npm install -g github:RoacherM/mmd2txt` |
-| `ub-mode` | 写代码、改代码时用三件外部量具打分：crapper（复杂度×覆盖率，CRAP < 10）、dryer（结构重复）、mutator（变异测试）。工具是 Uncle Bob 的 [crapper](https://github.com/unclebob/crapper) / [dryer](https://github.com/unclebob/dryer) / [mutator](https://github.com/unclebob/mutator)（0BSD），源码内置在 `skills/ub-mode/tools/`，`scripts/ub` 首次运行用 uv 在 `~/.cache/ub-mode` 建一个共用环境 | [uv](https://docs.astral.sh/uv/)、Python 3.11–3.14（uv 会自己下载） |
+| `ub-mode` | 写代码、改代码时用三件外部量具打分（`crapper` 复杂度×覆盖率 CRAP < 10、`dryer` 结构重复、`mutator` 变异测试）加本地跨语言静态门禁 `ub check`（Python/JS/TS/Rust 测试诚实度与静默空返回兜底）。上游三件套是 Uncle Bob 的 [crapper](https://github.com/unclebob/crapper) / [dryer](https://github.com/unclebob/dryer) / [mutator](https://github.com/unclebob/mutator)（0BSD），原样内置在 `skills/ub-mode/tools/`（`vendor.sh` 可直接同步上游）；`check` 独立放在 `skills/ub-mode/check/`，`scripts/ub` 共用 `~/.cache/ub-mode` 里的单一 uv Python 环境并附带 Python `.venv` 预检 | [uv](https://docs.astral.sh/uv/)、Python 3.11–3.14（uv 会自己下载） |
 | `herdr` | 在 Herdr 里控制分屏、终端和 Agent。先判断环境：Herdr.app（`herdr-app` + `hc`）走 `references/herdr-app.md` 里的分屏开发流程（日常左 1 + 右 2，按需加开 Reviewer）；终端版 `herdr` 走 `herdr --skill` 的官方说明 | Herdr.app 或 herdr |
 | `implicit-state-machines` | 原样一句提示词：找出应用里所有隐式状态机，选同时提升 UX、DX、AX 且不破坏现有功能的方案 | 无 |
 | `deslop` | 给已有中文文本去 AI 味：删空话、模板句、翻译腔，理顺主语、术语和段落，保留原意和事实 | 无 |
