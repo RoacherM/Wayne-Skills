@@ -406,7 +406,7 @@ describe('ub check: inline exemptions, git/path semantics, and exit codes', () =
     }
   });
 
-  it('respects .gitignore, SKIP_DIRS, repo-root test classification, changed-lines-only --changed, syntax error exit 2, and python -P isolation', () => {
+  it('respects .gitignore, SKIP_DIRS, repo-root test classification, HEAD-baseline --changed, TS 5.0 syntax tolerance, and python -P isolation', () => {
     const dir = makeDir('ub-check-git-');
     try {
       git(dir, ['init', '-q']);
@@ -514,12 +514,11 @@ describe('ub check: inline exemptions, git/path semantics, and exit codes', () =
       assert.equal(withUntracked.status, 1);
       assert.ok(withUntracked.data.findings.some((f) => f.file === 'src/new.js'));
 
-      // Syntax error file exits 2 with ok=false
-      writeFileSync(join(dir, 'src/broken.py'), 'def oops(:\n    pass\n');
-      const syntaxErr = runCheckJson(['src/broken.py'], dir);
-      assert.equal(syntaxErr.status, 2);
-      assert.equal(syntaxErr.data.ok, false);
-      assert.match(syntaxErr.data.error, /syntax error/);
+      // Valid TS 5.0 syntax (export type *) that bundled tree-sitter may mark with error nodes must NOT fail with exit 2
+      writeFileSync(join(dir, 'src/types.ts'), "export type * from './other';\nexport const ok = 1;\n");
+      const ts5 = runCheckJson(['src/types.ts'], dir);
+      assert.equal(ts5.status, 0);
+      assert.equal(ts5.data.ok, true);
 
       // Missing path exits 2 with ok=false
       const missing = runCheckJson(['does-not-exist.py'], dir);
@@ -533,29 +532,165 @@ describe('ub check: inline exemptions, git/path semantics, and exit codes', () =
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it('catches deletion/widening cheats via HEAD baseline diff while staying silent on pure git mv renames', () => {
+    const dir = makeDir('ub-check-baseline-');
+    try {
+      git(dir, ['init', '-q']);
+      git(dir, ['config', 'user.email', 'test@example.com']);
+      git(dir, ['config', 'user.name', 'Test']);
+      mkdirSync(join(dir, 'tests'), { recursive: true });
+      mkdirSync(join(dir, 'src'), { recursive: true });
+
+      writeFileSync(
+        join(dir, 'tests/test_cheats.py'),
+        [
+          'import time',
+          'import pytest',
+          '',
+          'def test_legacy_untouched():',
+          '    time.sleep(9)',
+          '',
+          'def test_will_hollow():',
+          '    assert 1 == 1',
+          '',
+          '@pytest.mark.skip(',
+          '    reason="linux only",',
+          ')',
+          'def test_will_drop_reason():',
+          '    assert True',
+          '',
+          'def test_will_add_sleep():',
+          '    assert True',
+        ].join('\n') + '\n',
+      );
+      writeFileSync(
+        join(dir, 'tests/cheats.test.mjs'),
+        [
+          "import { test } from 'node:test';",
+          "test('will hollow', () => {",
+          '  console.log(1);',
+          '});',
+          "test('will skip', () => { console.log(1); });",
+        ].join('\n') + '\n',
+      );
+      writeFileSync(
+        join(dir, 'src/parse.py'),
+        [
+          'def parse(x):',
+          '    try:',
+          '        return [int(x)]',
+          '    except ValueError:',
+          '        return []',
+        ].join('\n') + '\n',
+      );
+      writeFileSync(
+        join(dir, 'tests/test_rename_me.py'),
+        'import time\ndef test_old_debt():\n    time.sleep(5)\n',
+      );
+
+      git(dir, ['add', '.']);
+      git(dir, ['commit', '-q', '-m', 'baseline']);
+
+      // Pure rename of legacy debt must not report existing sleep as new
+      git(dir, ['mv', 'tests/test_rename_me.py', 'tests/test_renamed.py']);
+      const afterRename = runCheckJson(['--changed'], dir);
+      assert.equal(afterRename.status, 0);
+      assert.deepEqual(afterRename.data.findings, []);
+
+      // Apply all 6 cheat edits across the 3 files
+      writeFileSync(
+        join(dir, 'tests/test_cheats.py'),
+        [
+          'import time',
+          'import pytest',
+          '',
+          'def test_legacy_untouched():',
+          '    time.sleep(9)',
+          '',
+          'def test_will_hollow():',
+          '    pass',
+          '',
+          '@pytest.mark.skip(',
+          ')',
+          'def test_will_drop_reason():',
+          '    assert True',
+          '',
+          'def test_will_add_sleep():',
+          '    time.sleep(1)',
+        ].join('\n') + '\n',
+      );
+      writeFileSync(
+        join(dir, 'tests/cheats.test.mjs'),
+        [
+          "import { test } from 'node:test';",
+          "test('will hollow', () => {",
+          '});',
+          "test('will skip', { skip: true }, () => { console.log(1); });",
+        ].join('\n') + '\n',
+      );
+      writeFileSync(
+        join(dir, 'src/parse.py'),
+        [
+          'def parse(x):',
+          '    try:',
+          '        return [int(x)]',
+          '    except Exception:',
+          '        return []',
+        ].join('\n') + '\n',
+      );
+
+      const { status, data } = runCheckJson(['--changed'], dir);
+      assert.equal(status, 1);
+      const hits = data.findings.map((f) => `${f.file}:${f.line}:${f.rule}`);
+      assert.deepEqual(hits, [
+        'src/parse.py:5:ub-check(no-silent-fallback)',
+        'tests/cheats.test.mjs:2:ub-check(no-skipped-or-empty-test)',
+        'tests/cheats.test.mjs:4:ub-check(no-skipped-or-empty-test)',
+        'tests/test_cheats.py:7:ub-check(no-skipped-or-empty-test)',
+        'tests/test_cheats.py:10:ub-check(no-skipped-or-empty-test)',
+        'tests/test_cheats.py:16:ub-check(no-fixed-sleep)',
+      ]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('scripts/ub: Python .venv preflight', () => {
-  it('checks Python targets even without pyproject.toml, skips non-Python targets in mixed repos, and handles --use-existing-coverage', () => {
+  it('checks Python targets at any depth without pyproject.toml, skips JS-only --changed and non-Python targets, and handles --use-existing-coverage', () => {
     const dir = makeDir('ub-preflight-');
     try {
-      // Script-only repo with no pyproject.toml (like storyforge)
-      mkdirSync(join(dir, 'scripts'), { recursive: true });
-      writeFileSync(join(dir, 'scripts/fx_catalog.py'), 'def f():\n    return 1\n');
+      git(dir, ['init', '-q']);
+      git(dir, ['config', 'user.email', 'test@example.com']);
+      git(dir, ['config', 'user.name', 'Test']);
 
-      const scriptFile = runUb(['crapper', 'scripts/fx_catalog.py'], dir);
+      // Script-only repo with deep 4th-level .py and no pyproject.toml
+      mkdirSync(join(dir, 'scripts/a/b/c'), { recursive: true });
+      writeFileSync(join(dir, 'scripts/a/b/c/fx_catalog.py'), 'def f():\n    return 1\n');
+      mkdirSync(join(dir, 'src'), { recursive: true });
+      writeFileSync(join(dir, 'src/a.js'), 'export const x = 1;\n');
+      git(dir, ['add', '.']);
+      git(dir, ['commit', '-q', '-m', 'init']);
+
+      const scriptFile = runUb(['crapper', 'scripts/a/b/c/fx_catalog.py'], dir);
       assert.equal(scriptFile.status, 2);
       assert.match(scriptFile.stderr, /uv venv && uv pip install --python \.venv\/bin\/python coverage pytest/);
 
-      const scriptDir = runUb(['crapper', 'scripts'], dir);
-      assert.equal(scriptDir.status, 2);
+      // Deep directory (>3 levels) still triggers preflight via git ls-files
+      const deepDir = runUb(['crapper', 'scripts'], dir);
+      assert.equal(deepDir.status, 2);
 
       const defaultRoot = runUb(['crapper'], dir);
       assert.equal(defaultRoot.status, 2);
 
+      // In a mixed repo, editing ONLY JS and running `ub crapper --changed` must NOT demand .venv
+      writeFileSync(join(dir, 'src/a.js'), 'export const x = 2;\n');
+      const changedJsOnly = runUb(['crapper', '--changed'], dir);
+      assert.notEqual(changedJsOnly.status, 2, 'JS-only --changed must bypass Python .venv preflight');
+
       // Now turn into a mixed repo with pyproject.toml + TypeScript file
       writeFileSync(join(dir, 'pyproject.toml'), '[project]\nname = "demo"\n[tool.pytest.ini_options]\n');
-      mkdirSync(join(dir, 'src'), { recursive: true });
       writeFileSync(join(dir, 'src/a.ts'), 'export const x = 1;\n');
 
       // Explicit non-Python file target must NOT be blocked by Python .venv preflight
@@ -565,11 +700,11 @@ describe('scripts/ub: Python .venv preflight', () => {
       assert.notEqual(tsWithCov.status, 2, 'non-.py target must bypass Python .venv preflight');
 
       // Python target with pyproject.toml gives -e . hint
-      const noVenvCrap = runUb(['crapper', 'scripts/fx_catalog.py'], dir);
+      const noVenvCrap = runUb(['crapper', 'scripts/a/b/c/fx_catalog.py'], dir);
       assert.equal(noVenvCrap.status, 2);
       assert.match(noVenvCrap.stderr, /uv venv && uv pip install -e \. coverage pytest/);
 
-      const noVenvMut = runUb(['mutator', 'scripts/fx_catalog.py'], dir);
+      const noVenvMut = runUb(['mutator', 'scripts/a/b/c/fx_catalog.py'], dir);
       assert.equal(noVenvMut.status, 2);
       assert.match(noVenvMut.stderr, /requires \.venv/);
 
@@ -583,20 +718,20 @@ describe('scripts/ub: Python .venv preflight', () => {
       writeFileSync(fakePy, '#!/bin/sh\nexit 1\n');
       chmodSync(fakePy, 0o755);
 
-      const noCov = runUb(['crapper', 'scripts/fx_catalog.py'], dir);
+      const noCov = runUb(['crapper', 'scripts/a/b/c/fx_catalog.py'], dir);
       assert.equal(noCov.status, 2);
       assert.match(noCov.stderr, /missing 'coverage'/);
 
-      const noCovMut = runUb(['mutator', 'scripts/fx_catalog.py'], dir);
+      const noCovMut = runUb(['mutator', 'scripts/a/b/c/fx_catalog.py'], dir);
       assert.equal(noCovMut.status, 2);
       assert.match(noCovMut.stderr, /missing 'coverage'/);
 
       // mutator --use-existing-coverage skips coverage check and checks pytest instead
-      const existingCovMut = runUb(['mutator', '--use-existing-coverage', 'scripts/fx_catalog.py'], dir);
+      const existingCovMut = runUb(['mutator', '--use-existing-coverage', 'scripts/a/b/c/fx_catalog.py'], dir);
       assert.equal(existingCovMut.status, 2);
       assert.match(existingCovMut.stderr, /missing 'pytest'/);
 
-      const noPytest = runUb(['mutator', '--no-coverage', 'scripts/fx_catalog.py'], dir);
+      const noPytest = runUb(['mutator', '--no-coverage', 'scripts/a/b/c/fx_catalog.py'], dir);
       assert.equal(noPytest.status, 2);
       assert.match(noPytest.stderr, /missing 'pytest'/);
     } finally {

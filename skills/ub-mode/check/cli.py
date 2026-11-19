@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import subprocess
 import sys
+from collections import Counter
 from dataclasses import asdict
 from pathlib import Path
 
@@ -37,18 +37,17 @@ SKIP_DIRS = {
     "__pycache__",
 }
 
-_HUNK_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@", re.MULTILINE)
-
 HELP = """\
 Usage: ub check [--changed] [--json] [path ...]
 
 Run cross-language test-honesty and silent-fallback static checks (Python, JS/TS, Rust).
-Exit codes: 0 clean, 1 findings detected, 2 runner/parse error, 64 usage error.
+Exit codes: 0 clean, 1 findings detected, 2 runner/git error, 64 usage error.
 
 Options:
   -h, --help   Print this help and exit.
-  --changed    Check only changed lines of modified files (and full untracked/new files)
-               from git status. Cannot be combined with explicit paths.
+  --changed    Check files from git status and report only findings newly introduced
+               relative to HEAD (untracked/new files checked in full). Cannot be
+               combined with explicit paths.
   --json       Print findings as JSON.
 
 Inline exemption (line above for standalone comment, or same line for trailing comment;
@@ -109,9 +108,9 @@ def _is_skipped_rel(rel: Path) -> bool:
     return rel.name.endswith((".min.js", ".min.mjs"))
 
 
-def _parse_porcelain_entries(raw: str) -> list[tuple[str, str]]:
+def _parse_porcelain_entries(raw: str) -> list[tuple[str, str, str | None]]:
     entries = raw.split("\0")
-    out: list[tuple[str, str]] = []
+    out: list[tuple[str, str, str | None]] = []
     idx = 0
     while idx < len(entries):
         entry = entries[idx]
@@ -119,33 +118,24 @@ def _parse_porcelain_entries(raw: str) -> list[tuple[str, str]]:
         if len(entry) < 4:
             continue
         code, rel = entry[:2], entry[3:]
+        orig: str | None = None
         if "R" in code or "C" in code:
+            orig = entries[idx] if idx < len(entries) else None
             idx += 1
         if "D" not in code:
-            out.append((code, rel))
+            out.append((code, rel, orig))
     return out
 
 
-def _changed_lines_in_diff(diff_text: str) -> set[int]:
-    lines: set[int] = set()
-    for match in _HUNK_RE.finditer(diff_text):
-        start = int(match.group(1))
-        count = int(match.group(2)) if match.group(2) is not None else 1
-        if count > 0:
-            lines.update(range(start, start + count))
-    return lines
-
-
-def _changed_lines_for(repo_root: Path, code: str, rel: str, *, has_head: bool) -> set[int] | None:
-    if code == "??" or "A" in code or not has_head:
+def _baseline_ref(code: str, rel: str, orig: str | None, *, has_head: bool) -> str | None:
+    if not has_head or code == "??" or "A" in code or "C" in code:
         return None
-    proc = _run_git(repo_root, ["diff", "-U0", "--no-color", "HEAD", "--", rel])
-    if proc.returncode != 0:
-        raise RuntimeError(proc.stderr.strip() or f"git diff failed for {rel}")
-    return _changed_lines_in_diff(proc.stdout)
+    if "R" in code and orig:
+        return orig
+    return rel
 
 
-def _changed_targets(root: Path) -> list[tuple[Path, set[int] | None]]:
+def _changed_targets(root: Path) -> list[tuple[Path, str | None]]:
     repo_root = _git_repo_root(root)
     if repo_root is None:
         raise RuntimeError("--changed requires a git repository")
@@ -153,13 +143,13 @@ def _changed_targets(root: Path) -> list[tuple[Path, set[int] | None]]:
     if status.returncode != 0:
         raise RuntimeError(status.stderr.strip() or "git status failed")
     has_head = _run_git(repo_root, ["rev-parse", "--verify", "HEAD"]).returncode == 0
-    targets: dict[Path, set[int] | None] = {}
-    for code, rel in _parse_porcelain_entries(status.stdout):
+    targets: dict[Path, str | None] = {}
+    for code, rel, orig in _parse_porcelain_entries(status.stdout):
         if _is_skipped_rel(Path(rel)):
             continue
         full = (repo_root / rel).resolve()
         if full.is_file() and grammar_of(full) is not None and _is_within(full, root):
-            targets[full] = _changed_lines_for(repo_root, code, rel, has_head=has_head)
+            targets[full] = _baseline_ref(code, rel, orig, has_head=has_head)
     return sorted(targets.items(), key=lambda pair: pair[0].as_posix())
 
 
@@ -193,7 +183,7 @@ def _walk_dir(target: Path) -> list[Path]:
     return found
 
 
-def _collect_targets(mode: str, raw_paths: list[str], root: Path) -> list[tuple[Path, set[int] | None]]:
+def _collect_targets(mode: str, raw_paths: list[str], root: Path) -> list[tuple[Path, str | None]]:
     if mode == "changed":
         return _changed_targets(root)
     targets = [
@@ -219,16 +209,7 @@ def _rel_path(path: Path, base: Path) -> Path:
         return Path(path.name)
 
 
-def _check_one(
-    path: Path,
-    root: Path,
-    repo_root: Path | None,
-    changed_lines: set[int] | None,
-) -> list[Finding]:
-    display = _rel_path(path, root).as_posix() if _is_within(path, root) else path.as_posix()
-    role_base = repo_root if (repo_root is not None and _is_within(path, repo_root)) else root
-    role_rel = _rel_path(path, role_base)
-    source = path.read_text(encoding="utf-8", errors="replace")
+def _check_text(display: str, role_rel: Path, source: str) -> list[Finding]:
     parsed = parse_file(display, role_rel, source)
     if parsed is None:
         return []
@@ -238,10 +219,59 @@ def _check_one(
         raw = check_rust(parsed)
     else:
         raw = check_jsts(parsed)
-    checked = apply_allow_comments(parsed, raw)
-    if changed_lines is not None:
-        return [f for f in checked if f.line in changed_lines]
-    return checked
+    return apply_allow_comments(parsed, raw)
+
+
+def _line_signature(lines: list[str], finding: Finding) -> tuple[str, str]:
+    idx = finding.line - 1
+    snippet = lines[idx].strip() if 0 <= idx < len(lines) else ""
+    return (finding.rule, snippet)
+
+
+def _subtract_baseline(
+    current: list[Finding],
+    current_source: str,
+    baseline: list[Finding],
+    baseline_source: str,
+) -> list[Finding]:
+    base_lines = baseline_source.splitlines()
+    cur_lines = current_source.splitlines()
+    remaining = Counter(_line_signature(base_lines, f) for f in baseline)
+    added: list[Finding] = []
+    for item in current:
+        sig = _line_signature(cur_lines, item)
+        if remaining[sig] > 0:
+            remaining[sig] -= 1
+        else:
+            added.append(item)
+    return added
+
+
+def _head_source(repo_root: Path, base_rel: str) -> str | None:
+    proc = _run_git(repo_root, ["show", f"HEAD:{base_rel}"])
+    if proc.returncode != 0:
+        return None
+    return proc.stdout
+
+
+def _check_one(
+    path: Path,
+    root: Path,
+    repo_root: Path | None,
+    base_rel: str | None,
+) -> list[Finding]:
+    display = _rel_path(path, root).as_posix() if _is_within(path, root) else path.as_posix()
+    role_base = repo_root if (repo_root is not None and _is_within(path, repo_root)) else root
+    role_rel = _rel_path(path, role_base)
+    source = path.read_text(encoding="utf-8", errors="replace")
+    current = _check_text(display, role_rel, source)
+    if base_rel is None or repo_root is None or not current:
+        return current
+    head_text = _head_source(repo_root, base_rel)
+    if head_text is None:
+        return current
+    baseline = _check_text(display, Path(base_rel), head_text)
+    return _subtract_baseline(current, source, baseline, head_text)
 
 
 def _format_text(findings: list[Finding], file_count: int, mode: str) -> str:
@@ -281,8 +311,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         targets = _collect_targets(mode, raw_paths, root)
         findings: list[Finding] = []
-        for path, changed_lines in targets:
-            findings.extend(_check_one(path, root, repo_root, changed_lines))
+        for path, base_rel in targets:
+            findings.extend(_check_one(path, root, repo_root, base_rel))
     except (OSError, RuntimeError, ValueError) as exc:
         return _emit_error(fmt, root, str(exc))
 

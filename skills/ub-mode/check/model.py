@@ -75,8 +75,6 @@ def parse_file(display: str, rel_path: Path, source: str) -> ParsedFile | None:
         return None
     data = source.encode("utf-8")
     tree = _parser_for(grammar).parse(data)
-    if tree.root_node.has_error:
-        raise ValueError(f"syntax error while parsing {display}")
     return ParsedFile(
         display=display,
         grammar=grammar,

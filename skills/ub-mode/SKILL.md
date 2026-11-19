@@ -30,8 +30,8 @@ The first call builds one shared Python environment with `uv` in `~/.cache/ub-mo
 ## `ub check` (pass/fail gate)
 
 Unlike the three scoring instruments, `ub check` is a binary gate with zero `warn` tier:
-- Exit codes: `0` clean, `1` violations found, `2` runner/git/parse error (never silently degrades to pass), `64` bad CLI arguments (including combining `--changed` with explicit paths).
-- `--changed` reports only findings on changed lines of modified files (and full contents of untracked/newly added files), so touching a legacy file does not force unrelated cleanup.
+- Exit codes: `0` clean, `1` violations found, `2` runner/git error (never silently degrades to pass), `64` bad CLI arguments (including combining `--changed` with explicit paths). Real syntax errors stay with `oxlint` / `ruff` / `tsc`.
+- `--changed` compares each modified or renamed file against its `HEAD` baseline and reports only newly introduced violations (including hollowed tests, removed skip reasons, or widened `except` clauses) while staying silent on untouched legacy debt and pure `git mv` renames; untracked/newly added files are checked in full.
 - Respects `.gitignore` (`git ls-files -co --exclude-standard`), skips `dist`/`vendor`/`node_modules`/`*.min.js`, and classifies test files relative to the git repository root.
 - **Inline exemption** (standalone comment applies to the next line only; trailing comment applies to the same line only; non-empty reason mandatory, otherwise fails with `invalid-allow-comment`):
   - Python: `# ub-check: allow <rule>: <reason>`

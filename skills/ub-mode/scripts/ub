@@ -45,9 +45,18 @@ is_python_project() {
 }
 
 dir_has_py() {
-  find "$1" -maxdepth 3 \
+  if git -C "$1" rev-parse --show-toplevel >/dev/null 2>&1; then
+    git -C "$1" ls-files -co --exclude-standard -- '*.py' ':!:*node_modules*' ':!:*.venv*' ':!:*venv*' 2>/dev/null | head -n 1 | grep -q .
+    return $?
+  fi
+  find "$1" \
     \( -name .git -o -name node_modules -o -name .venv -o -name venv -o -name dist -o -name target -o -name build -o -name __pycache__ \) -prune \
     -o -type f -name '*.py' -print 2>/dev/null | head -n 1 | grep -q .
+}
+
+changed_has_py() {
+  git rev-parse --show-toplevel >/dev/null 2>&1 || return 1
+  git status --porcelain -z -uall 2>/dev/null | tr '\0' '\n' | grep -v '^D\|^ D' | grep -q '\.py$'
 }
 
 project_uses_pytest() {
@@ -63,6 +72,7 @@ python_preflight() {
   shift
   need_coverage=1
   need_pytest=1
+  is_changed=0
   has_py_target=0
   has_non_py_file=0
   has_dir_target=0
@@ -76,6 +86,7 @@ python_preflight() {
     fi
     case "$arg" in
       -h|--help) return 0 ;;
+      --changed) is_changed=1 ;;
       --no-coverage)
         [ "$tool" = "crapper" ] && return 0
         need_coverage=0 ;;
@@ -120,6 +131,8 @@ python_preflight() {
     [ "$dir_py" -eq 1 ] || return 0
   elif [ "$has_positional" -eq 1 ] && [ "$has_non_py_file" -eq 1 ]; then
     return 0
+  elif [ "$is_changed" -eq 1 ] && [ "$has_positional" -eq 0 ]; then
+    changed_has_py || return 0
   else
     is_python_project || dir_has_py . || return 0
   fi
