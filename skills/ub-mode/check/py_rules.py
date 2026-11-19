@@ -17,7 +17,20 @@ _BROAD_EXCEPTS = {"", "Exception", "BaseException"}
 _EMPTY_RETURNS = {'""', "''", "[]", "{}", "()", "list()", "dict()", "set()"}
 _LOOP_TYPES = {"for_statement", "while_statement"}
 _TEST_FIXTURE_DECORATORS = {"pytest.fixture", "fixture"}
-_TEST_HOOK_NAMES = {"setUp", "tearDown", "setUpClass", "tearDownClass", "asyncSetUp", "asyncTearDown"}
+_TEST_HOOK_NAMES = {
+    "setUp",
+    "tearDown",
+    "setUpClass",
+    "tearDownClass",
+    "asyncSetUp",
+    "asyncTearDown",
+    "setup_method",
+    "teardown_method",
+    "setup_class",
+    "teardown_class",
+    "setup_function",
+    "teardown_function",
+}
 
 _MSG_SLEEP = (
     "Replace fixed sleep in tests with a real event, queue, or barrier signal "
@@ -234,6 +247,8 @@ def _is_bare_skip_call(data: bytes, call) -> bool:
 
 def _except_is_broad(data: bytes, clause) -> bool:
     for child in named_children(clause):
+        if child.type == "comment":
+            continue
         if child.type == "block":
             return True
         if child.type == "as_pattern":

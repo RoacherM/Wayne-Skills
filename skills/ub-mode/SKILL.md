@@ -30,9 +30,10 @@ The first call builds one shared Python environment with `uv` in `~/.cache/ub-mo
 ## `ub check` (pass/fail gate)
 
 Unlike the three scoring instruments, `ub check` is a binary gate with zero `warn` tier:
-- Exit codes: `0` clean, `1` violations found, `2` runner/git/parse error (never silently degrades to pass), `64` bad CLI arguments.
-- Respects `.gitignore` in git repositories (`git ls-files -co --exclude-standard`) and classifies test files relative to the workspace root.
-- **Inline exemption** (same line or immediately preceding line, non-empty reason mandatory; missing reason itself fails with `invalid-allow-comment`):
+- Exit codes: `0` clean, `1` violations found, `2` runner/git/parse error (never silently degrades to pass), `64` bad CLI arguments (including combining `--changed` with explicit paths).
+- `--changed` reports only findings on changed lines of modified files (and full contents of untracked/newly added files), so touching a legacy file does not force unrelated cleanup.
+- Respects `.gitignore` (`git ls-files -co --exclude-standard`), skips `dist`/`vendor`/`node_modules`/`*.min.js`, and classifies test files relative to the git repository root.
+- **Inline exemption** (standalone comment applies to the next line only; trailing comment applies to the same line only; non-empty reason mandatory, otherwise fails with `invalid-allow-comment`):
   - Python: `# ub-check: allow <rule>: <reason>`
   - JS/TS/Rust: `// ub-check: allow <rule>: <reason>`
 
@@ -48,7 +49,7 @@ You choose when to run them, on what, and what to do with the result. Independen
 - dryer flags short look-alikes (two 3-line constructors score 1.0). Merge when the two carry one decision; keep them apart when they only share shape.
 - mutator runs the tests once per mutant and skips lines no test covers (reported as UNCOVERED). Point it at the files you changed. A survivor names a behaviour no test pins.
 - mutator runs each mutant in a worker folder of symlinks to the project. A test that finds the source through a resolved path (Python `Path(__file__).resolve()` on `sys.path`, an absolute import root) loads the real, unmutated file, and every mutant survives. When everything survives, apply one mutant by hand and run the tests to diagnose that path issue (e.g. pytest `pythonpath = ["src"]`) — **never report hand-edited manual mutations as a substitute for running `ub mutator`**. If `ub mutator` cannot run, fix the blocker or report it explicitly and stop.
-- For Python, `scripts/ub` preflights `.venv/bin/python` (or `venv/bin/python`) before running `mutator` or coverage-enabled `crapper` in a Python project root (monorepo sub-packages still need their own `.venv`). Because `uv venv` omits `pip` by default, `crapper` cannot auto-install `coverage` into a bare `uv` venv: prepare the project with `uv venv && uv pip install -e . coverage pytest` (drop `pytest` for stdlib `unittest` projects) before running.
+- For Python, `scripts/ub` preflights `.venv/bin/python` (or `venv/bin/python`) whenever the target includes `.py` files (even in repos without `pyproject.toml`) while skipping non-Python targets in mixed repos. Because `uv venv` omits `pip` by default, `crapper` and `mutator` cannot auto-install `coverage` into a bare `uv` venv: prepare the project with `uv venv && uv pip install -e . coverage pytest` (or `uv pip install --python .venv/bin/python coverage pytest` in script-only repos without `pyproject.toml`, dropping `pytest` for stdlib `unittest` projects) before running.
 - For TypeScript, coverage comes from `npm run coverage`, Vitest `--coverage` (it may add `@vitest/coverage-v8` to `node_modules`), or `c8` around `npm test`.
 - The tools write `.metrics/` and `target/coverage/`. Keep them out of commits (`.git/info/exclude`), and keep `package.json` and lockfiles unchanged.
 - When a score stays over the target because the fix costs more than it buys, say so with the number.

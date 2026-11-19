@@ -35,22 +35,43 @@ _MSG_SKIP = (
 )
 
 
+_NESTED_USE_PATHS = (
+    ("std", "thread::sleep"),
+    ("tokio", "time::sleep"),
+    ("async_std", "task::sleep"),
+)
+
+
+def _match_brace_item(item: str, expected: str) -> str | None:
+    if item == expected:
+        return "sleep"
+    if item.startswith(f"{expected} as "):
+        return item.split(" as ", 1)[1].strip()
+    return None
+
+
+def _extract_brace_aliases(cleaned: str, prefix: str, expected: str) -> set[str]:
+    if not (cleaned.startswith(f"{prefix}::{{") and cleaned.endswith("}")):
+        return set()
+    inside = cleaned[len(prefix) + 3 : -1]
+    out: set[str] = set()
+    for part in inside.split(","):
+        alias = _match_brace_item(part.strip(), expected)
+        if alias is not None:
+            out.add(alias)
+    return out
+
+
 def _extract_use_sleep_aliases(raw_use: str) -> set[str]:
     aliases: set[str] = set()
     cleaned = " ".join(raw_use.removeprefix("use").rstrip(";").split())
     for prefix in _USE_SLEEP_PREFIXES:
-        if cleaned == f"{prefix}::sleep":
-            aliases.add("sleep")
-        elif cleaned.startswith(f"{prefix}::sleep as "):
-            aliases.add(cleaned.split(" as ", 1)[1].strip())
-        elif cleaned.startswith(f"{prefix}::{{") and cleaned.endswith("}"):
-            inside = cleaned[len(prefix) + 3 : -1]
-            for part in inside.split(","):
-                item = part.strip()
-                if item == "sleep":
-                    aliases.add("sleep")
-                elif item.startswith("sleep as "):
-                    aliases.add(item.split(" as ", 1)[1].strip())
+        alias = _match_brace_item(cleaned, f"{prefix}::sleep")
+        if alias is not None:
+            aliases.add(alias)
+        aliases.update(_extract_brace_aliases(cleaned, prefix, "sleep"))
+    for root_pkg, sub in _NESTED_USE_PATHS:
+        aliases.update(_extract_brace_aliases(cleaned, root_pkg, sub))
     return aliases
 
 

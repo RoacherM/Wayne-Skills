@@ -44,6 +44,12 @@ is_python_project() {
   [ -f pyproject.toml ] || [ -f setup.py ] || [ -f setup.cfg ] || [ -f pytest.ini ] || [ -f conftest.py ]
 }
 
+dir_has_py() {
+  find "$1" -maxdepth 3 \
+    \( -name .git -o -name node_modules -o -name .venv -o -name venv -o -name dist -o -name target -o -name build -o -name __pycache__ \) -prune \
+    -o -type f -name '*.py' -print 2>/dev/null | head -n 1 | grep -q .
+}
+
 project_uses_pytest() {
   [ -f pytest.ini ] || [ -f conftest.py ] && return 0
   for cfg in pyproject.toml setup.cfg tox.ini; do
@@ -55,23 +61,68 @@ project_uses_pytest() {
 python_preflight() {
   tool=$1
   shift
-  is_python_project || return 0
   need_coverage=1
   need_pytest=1
+  has_py_target=0
+  has_non_py_file=0
+  has_dir_target=0
+  dir_py=0
+  has_positional=0
+  skip_next=0
   for arg in "$@"; do
+    if [ "$skip_next" -eq 1 ]; then
+      skip_next=0
+      continue
+    fi
     case "$arg" in
       -h|--help) return 0 ;;
       --no-coverage)
         [ "$tool" = "crapper" ] && return 0
         need_coverage=0 ;;
-      --use-existing-coverage|--coverage-command|--coverage-command=*)
+      --use-existing-coverage)
+        [ "$tool" = "crapper" ] && return 0
+        need_coverage=0 ;;
+      --coverage-command)
+        [ "$tool" = "crapper" ] && return 0
+        skip_next=1 ;;
+      --coverage-command=*)
         [ "$tool" = "crapper" ] && return 0 ;;
       --scan)
         [ "$tool" = "mutator" ] && return 0 ;;
-      --test-command|--test-command=*)
+      --test-command)
+        [ "$tool" = "mutator" ] && need_pytest=0
+        skip_next=1 ;;
+      --test-command=*)
         [ "$tool" = "mutator" ] && need_pytest=0 ;;
+      --root|-s|--source-root|--threshold|-j|--jobs|--timeout)
+        skip_next=1 ;;
+      -*) ;;
+      *)
+        has_positional=1
+        case "$arg" in
+          *.py) has_py_target=1 ;;
+          *)
+            if [ -d "$arg" ]; then
+              has_dir_target=1
+              dir_has_py "$arg" && dir_py=1
+            elif [ -f "$arg" ]; then
+              has_non_py_file=1
+            fi ;;
+        esac ;;
     esac
   done
+  if [ "$need_coverage" -eq 0 ] && [ "$need_pytest" -eq 0 ]; then
+    return 0
+  fi
+  if [ "$has_py_target" -eq 1 ]; then
+    :
+  elif [ "$has_dir_target" -eq 1 ]; then
+    [ "$dir_py" -eq 1 ] || return 0
+  elif [ "$has_positional" -eq 1 ] && [ "$has_non_py_file" -eq 1 ]; then
+    return 0
+  else
+    is_python_project || dir_has_py . || return 0
+  fi
   proj_py=""
   for rel in .venv/bin/python venv/bin/python; do
     if [ -x "$rel" ]; then
@@ -80,8 +131,12 @@ python_preflight() {
     fi
   done
   if [ -z "$proj_py" ]; then
-    echo "ub: Python project requires .venv before running '$tool' (otherwise coverage reads 0% or mutator runs in ub's own venv)." >&2
-    echo "    Fix: uv venv && uv pip install -e . coverage pytest" >&2
+    echo "ub: Python target requires .venv before running '$tool' (otherwise coverage reads 0% or mutator runs in ub's own venv)." >&2
+    if [ -f pyproject.toml ] || [ -f setup.py ]; then
+      echo "    Fix: uv venv && uv pip install -e . coverage pytest" >&2
+    else
+      echo "    Fix: uv venv && uv pip install --python .venv/bin/python coverage pytest" >&2
+    fi
     exit 2
   fi
   if [ "$need_coverage" -eq 1 ] && ! "$proj_py" -c "import coverage" >/dev/null 2>&1; then
@@ -112,7 +167,7 @@ case "$cmd" in
   check)
     shift
     ready || build
-    PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="$SKILL_DIR" exec "$PY" -m check.cli "$@"
+    PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="$SKILL_DIR" exec "$PY" -P -m check.cli "$@"
     ;;
   setup)
     build

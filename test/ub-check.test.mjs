@@ -88,6 +88,10 @@ describe('ub check: Python rules', () => {
           '',
           'def test_empty_ellipsis():',
           '    ...',
+          '',
+          'class TestHooks:',
+          '    def setup_method(self):',
+          '        time.sleep(0.2)',
         ].join('\n') + '\n',
       );
 
@@ -109,7 +113,7 @@ describe('ub check: Python rules', () => {
           'def bad_bare_except(x):',
           '    try:',
           '        return str(x)',
-          '    except:',
+          '    except:  # noqa: E722',
           '        return ""',
           '',
           'def ok_none_fallback(x):',
@@ -151,6 +155,7 @@ describe('ub check: Python rules', () => {
         'tests/test_sample.py:30:ub-check(no-skipped-or-empty-test)',
         'tests/test_sample.py:39:ub-check(no-skipped-or-empty-test)',
         'tests/test_sample.py:43:ub-check(no-skipped-or-empty-test)',
+        'tests/test_sample.py:48:ub-check(no-fixed-sleep)',
       ]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -192,6 +197,16 @@ describe('ub check: JS/TS rules', () => {
           "test('promise sleep and bare t.skip', async (t) => {",
           '  t.skip();',
           '  await new Promise((r) => setTimeout(r, 100));',
+          '});',
+          '',
+          'const sleep = (ms) => new Promise((r) => setTimeout(r, ms));',
+          'function waitMs(ms) { return new Promise((r) => setTimeout(r, ms)); }',
+          "test('local sleep helpers and playwright conditional skip', async () => {",
+          "  test.skip(process.env.CI === '1', 'browser unavailable on CI');",
+          '  test.skip(process.env.CI === \'1\');',
+          '  await sleep(0);',
+          '  await sleep(50);',
+          '  await waitMs(50);',
           '});',
         ].join('\n') + '\n',
       );
@@ -250,6 +265,9 @@ describe('ub check: JS/TS rules', () => {
         'test/sample.test.mjs:21:ub-check(no-skipped-or-empty-test)',
         'test/sample.test.mjs:23:ub-check(no-skipped-or-empty-test)',
         'test/sample.test.mjs:24:ub-check(no-fixed-sleep)',
+        'test/sample.test.mjs:31:ub-check(no-skipped-or-empty-test)',
+        'test/sample.test.mjs:33:ub-check(no-fixed-sleep)',
+        'test/sample.test.mjs:34:ub-check(no-fixed-sleep)',
       ]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -266,7 +284,7 @@ describe('ub check: Rust rules', () => {
         join(dir, 'src/lib.rs'),
         [
           'use std::time::Duration;',
-          'use tokio::time::sleep;',
+          'use tokio::{time::sleep};',
           '',
           'pub fn prod_wait() {',
           '    std::thread::sleep(Duration::from_millis(50));',
@@ -332,6 +350,7 @@ describe('ub check: inline exemptions, git/path semantics, and exit codes', () =
           '    time.sleep(0.1)',
           '    time.sleep(0.1)',
           '    time.sleep(0.1)  # ub-check: allow no-fixed-sleep: same-line reason',
+          '    time.sleep(0.2)',
           '    # ub-check: allow no-fixed-sleep',
           '    time.sleep(0.1)',
         ].join('\n') + '\n',
@@ -351,8 +370,9 @@ describe('ub check: inline exemptions, git/path semantics, and exit codes', () =
       assert.deepEqual(hits, [
         'test_prefix.py:3:5:ub-check(no-fixed-sleep)',
         'tests/test_allow.py:5:5:ub-check(no-fixed-sleep)',
-        'tests/test_allow.py:7:5:ub-check(invalid-allow-comment)',
-        'tests/test_allow.py:8:5:ub-check(no-fixed-sleep)',
+        'tests/test_allow.py:7:5:ub-check(no-fixed-sleep)',
+        'tests/test_allow.py:8:5:ub-check(invalid-allow-comment)',
+        'tests/test_allow.py:9:5:ub-check(no-fixed-sleep)',
         'top_test.py:3:5:ub-check(no-fixed-sleep)',
       ]);
     } finally {
@@ -386,7 +406,7 @@ describe('ub check: inline exemptions, git/path semantics, and exit codes', () =
     }
   });
 
-  it('respects .gitignore and --changed in git repos, and exits 2 on runner errors', () => {
+  it('respects .gitignore, SKIP_DIRS, repo-root test classification, changed-lines-only --changed, syntax error exit 2, and python -P isolation', () => {
     const dir = makeDir('ub-check-git-');
     try {
       git(dir, ['init', '-q']);
@@ -394,25 +414,114 @@ describe('ub check: inline exemptions, git/path semantics, and exit codes', () =
       git(dir, ['config', 'user.name', 'Test']);
       writeFileSync(join(dir, '.gitignore'), 'generated/\n');
       mkdirSync(join(dir, 'generated'), { recursive: true });
+      mkdirSync(join(dir, 'dist'), { recursive: true });
+      mkdirSync(join(dir, 'vendor'), { recursive: true });
       mkdirSync(join(dir, 'src'), { recursive: true });
+      mkdirSync(join(dir, 'test'), { recursive: true });
+      mkdirSync(join(dir, 'check'), { recursive: true });
+
+      // Poisoned files matching stdlib / check.cli module names must not shadow ub check (-P)
+      writeFileSync(join(dir, 'check.py'), 'raise SystemExit(99)\n');
+      writeFileSync(join(dir, 'check/cli.py'), 'raise SystemExit(0)\n');
+      writeFileSync(join(dir, 'json.py'), 'raise RuntimeError("shadowed json")\n');
+
+      // Gitignored and tracked SKIP_DIRS / minified artifacts must be skipped
       writeFileSync(join(dir, 'generated/bad.js'), 'export const f = () => { try { return 1; } catch { return []; } };\n');
-      writeFileSync(join(dir, 'src/clean.js'), 'export const ok = 1;\n');
-      git(dir, ['add', '.gitignore', 'src/clean.js']);
+      writeFileSync(join(dir, 'dist/bundle.js'), 'export const d = () => { try { return 1; } catch { return []; } };\n');
+      writeFileSync(join(dir, 'vendor/lib.js'), 'export const v = () => { try { return 1; } catch { return []; } };\n');
+      writeFileSync(join(dir, 'src/app.min.js'), 'export const m=()=>Promise.resolve().catch(()=>[]);\n');
+
+      // Legacy file with pre-existing violation on line 2
+      writeFileSync(
+        join(dir, 'src/legacy.js'),
+        [
+          'export function oldBad() {',
+          '  try { return 1; } catch { return []; }',
+          '}',
+          'export function ok() {',
+          '  return 1;',
+          '}',
+        ].join('\n') + '\n',
+      );
+      writeFileSync(
+        join(dir, 'test/smoke.mjs'),
+        "import { test } from 'node:test';\ntest.only('focused', () => { console.log(1); });\n",
+      );
+
+      git(dir, ['add', '.gitignore', 'dist/bundle.js', 'vendor/lib.js', 'src/app.min.js', 'src/legacy.js', 'test/smoke.mjs', 'check.py', 'check/cli.py', 'json.py']);
       git(dir, ['commit', '-q', '-m', 'init']);
 
-      // Clean tracked files; gitignored generated/bad.js is skipped
-      const clean = runCheckJson([], dir);
-      assert.equal(clean.status, 0);
-      assert.equal(clean.data.files, 1);
+      // Running from test/ subdirectory still classifies test/smoke.mjs as test via git repo root
+      const fromSub = runCheckJson(['.'], join(dir, 'test'));
+      assert.equal(fromSub.status, 1);
+      assert.equal(fromSub.data.findings[0].rule, 'ub-check(no-skipped-or-empty-test)');
 
-      // Add a dirty file and check --changed
-      writeFileSync(join(dir, 'src/dirty.js'), 'export const g = () => { try { return 1; } catch { return {}; } };\n');
-      const changed = runCheckJson(['--changed'], dir);
-      assert.equal(changed.status, 1);
-      assert.equal(changed.data.files, 1);
-      assert.equal(changed.data.findings[0].file, 'src/dirty.js');
+      // Full scan skips dist/, vendor/, generated/, and *.min.js
+      const full = runCheckJson([], dir);
+      assert.equal(full.status, 1);
+      assert.deepEqual(
+        full.data.findings.map((f) => f.file),
+        ['src/legacy.js', 'test/smoke.mjs'],
+      );
 
-      // Missing path must fail loudly with exit 2 and ok=false
+      // Clean working tree: --changed says "no changed files to check"
+      const emptyChanged = runUb(['check', '--changed'], dir);
+      assert.equal(emptyChanged.status, 0);
+      assert.match(emptyChanged.stdout, /no changed files to check/);
+
+      // Combining --changed with explicit path exits 64
+      const badCombo = runUb(['check', '--changed', 'src'], dir);
+      assert.equal(badCombo.status, 64);
+
+      // Editing only clean lines in legacy.js passes --changed (untouched line 2 is ignored)
+      writeFileSync(
+        join(dir, 'src/legacy.js'),
+        [
+          'export function oldBad() {',
+          '  try { return 1; } catch { return []; }',
+          '}',
+          'export function ok() {',
+          '  return 2;',
+          '}',
+        ].join('\n') + '\n',
+      );
+      const cleanEdit = runCheckJson(['--changed'], dir);
+      assert.equal(cleanEdit.status, 0);
+      assert.equal(cleanEdit.data.ok, true);
+
+      // Introducing a new violation in legacy.js fails --changed on only the new line
+      writeFileSync(
+        join(dir, 'src/legacy.js'),
+        [
+          'export function oldBad() {',
+          '  try { return 1; } catch { return []; }',
+          '}',
+          'export function ok() {',
+          '  try { return 2; } catch { return {}; }',
+          '}',
+        ].join('\n') + '\n',
+      );
+      const dirtyEdit = runCheckJson(['--changed'], dir);
+      assert.equal(dirtyEdit.status, 1);
+      assert.deepEqual(
+        dirtyEdit.data.findings.map((f) => `${f.file}:${f.line}`),
+        ['src/legacy.js:5'],
+      );
+
+      // Untracked new file is checked in full
+      writeFileSync(join(dir, 'src/new.js'), 'export const g = () => { try { return 1; } catch { return {}; } };\n');
+      const withUntracked = runCheckJson(['--changed'], dir);
+      assert.equal(withUntracked.status, 1);
+      assert.ok(withUntracked.data.findings.some((f) => f.file === 'src/new.js'));
+
+      // Syntax error file exits 2 with ok=false
+      writeFileSync(join(dir, 'src/broken.py'), 'def oops(:\n    pass\n');
+      const syntaxErr = runCheckJson(['src/broken.py'], dir);
+      assert.equal(syntaxErr.status, 2);
+      assert.equal(syntaxErr.data.ok, false);
+      assert.match(syntaxErr.data.error, /syntax error/);
+
+      // Missing path exits 2 with ok=false
       const missing = runCheckJson(['does-not-exist.py'], dir);
       assert.equal(missing.status, 2);
       assert.equal(missing.data.ok, false);
@@ -427,39 +536,67 @@ describe('ub check: inline exemptions, git/path semantics, and exit codes', () =
 });
 
 describe('scripts/ub: Python .venv preflight', () => {
-  it('fails loudly with exit 2 and uv fix instructions when .venv, coverage, or pytest is missing', () => {
+  it('checks Python targets even without pyproject.toml, skips non-Python targets in mixed repos, and handles --use-existing-coverage', () => {
     const dir = makeDir('ub-preflight-');
     try {
+      // Script-only repo with no pyproject.toml (like storyforge)
+      mkdirSync(join(dir, 'scripts'), { recursive: true });
+      writeFileSync(join(dir, 'scripts/fx_catalog.py'), 'def f():\n    return 1\n');
+
+      const scriptFile = runUb(['crapper', 'scripts/fx_catalog.py'], dir);
+      assert.equal(scriptFile.status, 2);
+      assert.match(scriptFile.stderr, /uv venv && uv pip install --python \.venv\/bin\/python coverage pytest/);
+
+      const scriptDir = runUb(['crapper', 'scripts'], dir);
+      assert.equal(scriptDir.status, 2);
+
+      const defaultRoot = runUb(['crapper'], dir);
+      assert.equal(defaultRoot.status, 2);
+
+      // Now turn into a mixed repo with pyproject.toml + TypeScript file
       writeFileSync(join(dir, 'pyproject.toml'), '[project]\nname = "demo"\n[tool.pytest.ini_options]\n');
+      mkdirSync(join(dir, 'src'), { recursive: true });
+      writeFileSync(join(dir, 'src/a.ts'), 'export const x = 1;\n');
 
-      // No .venv -> crapper and mutator both exit 2
-      const noVenvCrap = runUb(['crapper', 'src'], dir);
+      // Explicit non-Python file target must NOT be blocked by Python .venv preflight
+      const tsOnly = runUb(['crapper', '--no-coverage', 'src/a.ts'], dir);
+      assert.equal(tsOnly.status, 0);
+      const tsWithCov = runUb(['crapper', 'src/a.ts'], dir);
+      assert.notEqual(tsWithCov.status, 2, 'non-.py target must bypass Python .venv preflight');
+
+      // Python target with pyproject.toml gives -e . hint
+      const noVenvCrap = runUb(['crapper', 'scripts/fx_catalog.py'], dir);
       assert.equal(noVenvCrap.status, 2);
-      assert.match(noVenvCrap.stderr, /uv venv && uv pip install/);
+      assert.match(noVenvCrap.stderr, /uv venv && uv pip install -e \. coverage pytest/);
 
-      const noVenvMut = runUb(['mutator', 'src/a.py'], dir);
+      const noVenvMut = runUb(['mutator', 'scripts/fx_catalog.py'], dir);
       assert.equal(noVenvMut.status, 2);
       assert.match(noVenvMut.stderr, /requires \.venv/);
 
-      // --no-coverage and --help bypass preflight
+      // --help bypasses preflight
       const help = runUb(['crapper', '--help'], dir);
       assert.equal(help.status, 0);
 
-      // Fake .venv/bin/python missing coverage
+      // Fake .venv/bin/python missing coverage and pytest
       mkdirSync(join(dir, '.venv/bin'), { recursive: true });
       const fakePy = join(dir, '.venv/bin/python');
       writeFileSync(fakePy, '#!/bin/sh\nexit 1\n');
       chmodSync(fakePy, 0o755);
 
-      const noCov = runUb(['crapper', 'src'], dir);
+      const noCov = runUb(['crapper', 'scripts/fx_catalog.py'], dir);
       assert.equal(noCov.status, 2);
       assert.match(noCov.stderr, /missing 'coverage'/);
 
-      const noCovMut = runUb(['mutator', 'src/a.py'], dir);
+      const noCovMut = runUb(['mutator', 'scripts/fx_catalog.py'], dir);
       assert.equal(noCovMut.status, 2);
       assert.match(noCovMut.stderr, /missing 'coverage'/);
 
-      const noPytest = runUb(['mutator', '--no-coverage', 'src/a.py'], dir);
+      // mutator --use-existing-coverage skips coverage check and checks pytest instead
+      const existingCovMut = runUb(['mutator', '--use-existing-coverage', 'scripts/fx_catalog.py'], dir);
+      assert.equal(existingCovMut.status, 2);
+      assert.match(existingCovMut.stderr, /missing 'pytest'/);
+
+      const noPytest = runUb(['mutator', '--no-coverage', 'scripts/fx_catalog.py'], dir);
       assert.equal(noPytest.status, 2);
       assert.match(noPytest.stderr, /missing 'pytest'/);
     } finally {

@@ -75,6 +75,8 @@ def parse_file(display: str, rel_path: Path, source: str) -> ParsedFile | None:
         return None
     data = source.encode("utf-8")
     tree = _parser_for(grammar).parse(data)
+    if tree.root_node.has_error:
+        raise ValueError(f"syntax error while parsing {display}")
     return ParsedFile(
         display=display,
         grammar=grammar,
@@ -142,6 +144,11 @@ def _extract_allow_directive(parsed: ParsedFile, comment_node) -> tuple[int, str
     return line, parsed_body.group(1), None
 
 
+def _is_standalone_comment(data: bytes, node) -> bool:
+    _, col = node.start_point
+    return data[node.start_byte - col : node.start_byte].strip() == b""
+
+
 def apply_allow_comments(parsed: ParsedFile, findings: list[Finding]) -> list[Finding]:
     allowed: dict[int, set[str]] = {}
     errors: list[Finding] = []
@@ -155,8 +162,8 @@ def apply_allow_comments(parsed: ParsedFile, findings: list[Finding]) -> list[Fi
         if err is not None:
             errors.append(err)
         elif rule is not None:
-            allowed.setdefault(line, set()).add(rule)
-            allowed.setdefault(line + 1, set()).add(rule)
+            target_line = line + 1 if _is_standalone_comment(parsed.data, node) else line
+            allowed.setdefault(target_line, set()).add(rule)
     kept = [
         f
         for f in findings

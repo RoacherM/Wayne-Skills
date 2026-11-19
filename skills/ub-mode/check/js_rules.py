@@ -204,6 +204,64 @@ def _empty_callback(arg) -> bool:
     return all(c.type == "comment" for c in named_children(body))
 
 
+def _returned_expr(body):
+    if body is None:
+        return None
+    if body.type != "statement_block":
+        return body
+    stmts = [c for c in named_children(body) if c.type != "comment"]
+    if len(stmts) != 1 or stmts[0].type != "return_statement":
+        return None
+    vals = named_children(stmts[0])
+    return vals[0] if len(vals) == 1 else None
+
+
+def _is_sleep_wrapper_fn(data: bytes, fn_node, base_aliases: set[str]) -> bool:
+    expr = _returned_expr(fn_node.child_by_field_name("body"))
+    return _is_sleep_expr(data, expr, base_aliases)
+
+
+def _var_sleep_helper_name(data: bytes, node, base_aliases: set[str]) -> str | None:
+    name = node.child_by_field_name("name")
+    val = node.child_by_field_name("value")
+    if name is None or name.type != "identifier" or val is None:
+        return None
+    if val.type in {"arrow_function", "function_expression"} and _is_sleep_wrapper_fn(data, val, base_aliases):
+        return text(data, name)
+    return None
+
+
+def _sleep_helper_name(data: bytes, node, base_aliases: set[str]) -> str | None:
+    if node.type == "function_declaration":
+        name = node.child_by_field_name("name")
+        return text(data, name) if name and _is_sleep_wrapper_fn(data, node, base_aliases) else None
+    if node.type == "variable_declarator":
+        return _var_sleep_helper_name(data, node, base_aliases)
+    return None
+
+
+def _local_sleep_helpers(data: bytes, root, base_aliases: set[str]) -> set[str]:
+    helpers: set[str] = set()
+    for node in walk(root):
+        found = _sleep_helper_name(data, node, base_aliases)
+        if found is not None:
+            helpers.add(found)
+    return helpers
+
+
+def _check_skip_member(parsed: ParsedFile, call, args: list) -> list[Finding]:
+    is_test_def = bool(args) and args[-1].type in {"arrow_function", "function_expression"}
+    if is_test_def or len(args) < 2 or not _string_nonempty(parsed.data, args[1]):
+        return [make_finding(parsed, call, "no-skipped-or-empty-test", _MSG_SKIP)]
+    return []
+
+
+def _check_t_skip(parsed: ParsedFile, call, args: list) -> list[Finding]:
+    if not args or not _string_nonempty(parsed.data, args[0]):
+        return [make_finding(parsed, call, "no-skipped-or-empty-test", _MSG_SKIP)]
+    return []
+
+
 def _check_member_test_call(parsed: ParsedFile, call, func, args: list) -> list[Finding]:
     obj = func.child_by_field_name("object")
     prop = func.child_by_field_name("property")
@@ -211,10 +269,12 @@ def _check_member_test_call(parsed: ParsedFile, call, func, args: list) -> list[
         return []
     obj_name = text(parsed.data, obj)
     prop_name = text(parsed.data, prop)
-    if obj_name in _TEST_ROOTS and prop_name in {"skip", "only"}:
+    if obj_name in _TEST_ROOTS and prop_name == "only":
         return [make_finding(parsed, call, "no-skipped-or-empty-test", _MSG_SKIP)]
-    if obj_name == "t" and prop_name == "skip" and (not args or not _string_nonempty(parsed.data, args[0])):
-        return [make_finding(parsed, call, "no-skipped-or-empty-test", _MSG_SKIP)]
+    if obj_name in _TEST_ROOTS and prop_name == "skip":
+        return _check_skip_member(parsed, call, args)
+    if obj_name == "t" and prop_name == "skip":
+        return _check_t_skip(parsed, call, args)
     return []
 
 
@@ -324,6 +384,7 @@ def _check_js_node(parsed: ParsedFile, node, timer_aliases: set[str], *, fake_ti
 
 def check_jsts(parsed: ParsedFile) -> list[Finding]:
     timer_aliases = _timer_aliases(parsed.data, parsed.root)
+    timer_aliases.update(_local_sleep_helpers(parsed.data, parsed.root, timer_aliases))
     fake_timers = _uses_fake_timers(parsed.data, parsed.root)
     findings: list[Finding] = []
     for node in walk(parsed.root):
