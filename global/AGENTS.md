@@ -1,23 +1,45 @@
 # AGENTS.md
 
-## 1. 先想清楚再动手（Think Before Coding）
-- 我提问或给反馈时，先直接回答并明确表态同意或反对，再动文件。
-- 动手前挑明隐含假设；需求有歧义、有多种理解或有更简单的做法时，先用几句话说清（该反驳就反驳），对齐后再写。
-- 除非我要求，不主动进正式 Plan 模式；一旦目标明确，直接做完闭环。
+## 1. Discuss or implement
 
-## 2. 极简优先（Simplicity First）
-- 用最少的代码解决当前问题，只交付我明确要求的内容；严禁擅自加多余的文字说明、按钮、装饰或顺手小功能（衍生想法一律放回复末尾「备注」）。
-- 不为单次调用造抽象，不加未要求的配置或兼容层，不为不可能发生的场景写错误处理。
-- 写完自查：如果资深工程师看一眼觉得绕，或界面/输出里有没点名要的元素，直接删掉精简。
+When I ask you to draft, compare, review, or discuss a change, don't make
+the change. Tell me what you recommend and why.
 
-## 3. 精准边界与模块归属（Scoped Ownership）
-- 只改当前打开的仓库和任务必需的文件；未点名的其他仓库、无关文件、他人目录或容器一律只读（「push」仅指当前仓库的改动）。
-- 对你本次触及的模块，以长期维护者（owner and long-term maintainer）的身份负责到底：合并重复逻辑而非复制粘贴打补丁，清干净本次改动产生的孤儿引用、变量和函数；未触及的邻近模块保持不动。
+When I ask you to implement it, explain in plain language what will change
+and how you'll check it. Then proceed without asking twice.
 
-## 4. 目标驱动与长任务播报（Goal-Driven Execution）
-- 把任务转成可验证条件（官方文档、编译、静态检查、测试或真实运行），汇报时分清「已验证事实」与「推测」，目标环境未测要明说。
-- 进入耗时的长任务时，开头说一句准备怎么做，过程中每隔几分钟同步一次进度；遇到常规障碍直接诊断处理并顺带告知（「发现 X，改用 Y 处理」），不要停下来等我。
-- 只在真实边界处停下询问：难以撤销的操作、对外推送/发布/远端安装、高成本批量开销，或停止非你启动的服务/进程。
+## 2. I own the boundaries; you own the implementation
 
-## 5. 个人习惯与纠偏按需加载
-- 我的个人工作习惯与跨项目历史纠偏在 `~/.agents/MEMORY.md`（含四节：`界面与原型`、`编码与验证`、`文档与沟通`、`环境与配额`）。涉及对应场景开工前按需读取对应小节；当我纠正你或说「记一下」时，按 `~/.agents/corrections/README.md` 当轮落盘。
+The contract is what each module does, what users and callers can rely on,
+and what data it stores or shares. Propose changes beyond that contract
+rather than making them on my behalf.
+
+Within the contract, use your judgment. Build on the existing code, style,
+and dependencies. If a change would duplicate logic or force a workaround,
+refactor the affected part. Remove what your change makes obsolete without
+breaking callers or losing data.
+
+For a new feature, get the smallest useful path working end to end, then
+complete the request. Don't build for hypothetical needs.
+
+Ask before changing the agreed outcome, scope, or cost, disrupting my work,
+or taking a hard-to-reverse action. Permission to edit is not permission to
+push, publish, deploy, or install globally. Use approvals already given.
+
+## 3. Verify at the boundary
+
+Test the whole feature as I will use it, in the environment where it needs
+to work. For a bug, reproduce what I saw and repeat the same action after
+the fix. Do not weaken the acceptance criteria to make a check pass.
+
+Add focused tests for important rules an end-to-end check might miss, such
+as who can access a record or whether a payment can be applied twice. When
+the result needs my judgment, show me the artifact or comparison.
+
+On long tasks, share useful findings early and keep working through routine
+obstacles. Lead with the result, the evidence, and what remains unverified.
+If you delegate, the final check is still yours.
+
+Read the relevant section of `~/.agents/MEMORY.md`. When I correct you or
+ask you to remember something, follow `~/.agents/corrections/README.md`
+in the same turn.
