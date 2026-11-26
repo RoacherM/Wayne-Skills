@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# herd-watch start|stop|status <project>
+# Runs herd-watchd.py in the background on this machine.
+# Log, alerts, and cursor live next to the board:
+# <project>/watch.log, <project>/alerts.jsonl, <project>/watch.state.json.
+set -uo pipefail
+here=$(cd "$(dirname "$0")" && pwd)
+[ $# -eq 2 ] || { echo "usage: herd-watch start|stop|status <project>" >&2; exit 2; }
+act=$1; proj=$2
+host=${HERD_BOARD_HOST:-}; [ "$host" = local ] && host=
+on_board() { if [ -z "$host" ]; then (cd "$HOME" && bash -c "$1"); else ssh -o BatchMode=yes "$host" "$1"; fi; }
+path=$(python3 "$here/herd-watchd.py" --print-path "$proj") || exit 2
+q=$(printf %q "$path")
+where="${host:+$host:}$path"
+key=$(printf '%s' "${host:-local}_$path" | tr -c 'A-Za-z0-9_' '_')
+rundir="${HERD_RUN_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/herd}"; mkdir -p "$rundir"; pidf="$rundir/$key.pid"
+alive() { [ -f "$pidf" ] && kill -0 "$(cat "$pidf")" 2>/dev/null; }
+case $act in
+  start)
+    if alive; then echo "already running pid $(cat "$pidf")"; exit 0; fi
+    on_board "test -f $q/roster.json" || { echo "no roster.json in $where" >&2; exit 1; }
+    nohup python3 "$here/herd-watchd.py" "$proj" >"$rundir/$key.out" 2>&1 </dev/null &
+    echo $! >"$pidf"
+    for _ in 1 2 3 4 5; do
+      if on_board "grep -q 'START pid=' $q/watch.log 2>/dev/null" || ! alive; then break; fi
+      sleep 0.1
+    done
+    if alive; then
+      echo "started pid $(cat "$pidf"), log $where/watch.log"
+    else
+      echo "failed:" >&2
+      tail -5 "$rundir/$key.out" >&2
+      rm -f "$pidf"
+      exit 1
+    fi ;;
+  stop)
+    if alive; then
+      kill "$(cat "$pidf")"; rm -f "$pidf"
+      on_board "echo \"\$(date -u +%FT%TZ) STOP\" >> $q/watch.log"
+      echo stopped
+    else
+      rm -f "$pidf"
+      echo "not running"
+    fi ;;
+  status)
+    if alive; then echo "running pid $(cat "$pidf")"; else echo "stopped"; fi
+    on_board "tail -n 5 $q/watch.log 2>/dev/null"
+    on_board "if [ -s $q/alerts.jsonl ]; then echo '--- alerts (last 5) ---'; tail -n 5 $q/alerts.jsonl; fi" ;;
+  *) echo "herd-watch: bad action $act" >&2; exit 2 ;;
+esac

@@ -1,0 +1,14 @@
+{
+  "project": "<project name>",
+  "coordinator": {
+    "machine": "local",
+    "pane": "<your $HC_TERMINAL_ID or herdr pane id>",
+    "mode": "notify"
+  },
+  "deadline_utc": "2030-01-01T09:00:00Z",
+  "stall_minutes": 15,
+  "members": {
+    "builder": {"machine": "local", "agent": "builder"},
+    "checker": {"machine": "cpu2", "agent": "checker"}
+  }
+}

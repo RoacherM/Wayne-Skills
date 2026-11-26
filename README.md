@@ -9,6 +9,7 @@
 | `terminal-diagrams` | 用户在终端里读回复时，agent 不发 ```mermaid 源码，而是用 `mmd2txt` 渲染成框线字符图再贴 | [`mmd2txt`](https://github.com/RoacherM/mmd2txt)，`npm install -g github:RoacherM/mmd2txt` |
 | `ub-mode` | 写代码、改代码时用三件外部量具打分（`crapper` 复杂度×覆盖率 CRAP < 10、`dryer` 结构重复、`mutator` 变异测试）加本地跨语言静态门禁 `ub check`（Python/JS/TS/Rust 测试诚实度与静默空返回兜底）。上游三件套是 Uncle Bob 的 [crapper](https://github.com/unclebob/crapper) / [dryer](https://github.com/unclebob/dryer) / [mutator](https://github.com/unclebob/mutator)（0BSD），原样内置在 `skills/ub-mode/tools/`（`vendor.sh` 可直接同步上游）；`check` 独立放在 `skills/ub-mode/check/`，`scripts/ub` 共用 `~/.cache/ub-mode` 里的单一 uv Python 环境并附带 Python `.venv` 预检 | [uv](https://docs.astral.sh/uv/)、Python 3.11–3.14（uv 会自己下载） |
 | `herdr` | 在 Herdr 里控制分屏、终端和 Agent。先判断环境：Herdr.app（`herdr-app` + `hc`）走 `references/herdr-app.md` 里的分屏开发流程（日常左 1 + 右 2，按需加开 Reviewer）；终端版 `herdr` 走 `herdr --skill` 的官方说明 | Herdr.app 或 herdr |
+| `herd` | 多 Agent 并行编排与跨机/跨 CLI 协同（2+ Worker 并行、跨机如 `cpu2`、多模型擂台、无人值守长任务）：开工前并发试探本机/远端 7 个编码 CLI（`agy` / `claude` / `codex` / `pi` / `epi` / `droid` / `grok`），用 `fcntl.flock` 保护的 `board.jsonl` + `BRIEF.md` + `roster.json` 分工，由 `herd-watchd.py` 在 `Herdr.app`（`hc` 默认，支持 `coordinator.mode=notify` 不打断左屏输入）或旧版 `herdr` 上做 `@mention` 唤醒、`blocked` 延迟补发、打回重做追踪与截止/冷场/额度巡检。改编自 [ythx-101/herd-skill](https://github.com/ythx-101/herd-skill)（MIT） | Python 3.11+；Herdr.app（`hc`）或 `herdr` |
 | `implicit-state-machines` | 原样一句提示词：找出应用里所有隐式状态机，选同时提升 UX、DX、AX 且不破坏现有功能的方案 | 无 |
 | `deslop` | 给已有中文文本去 AI 味：删空话、模板句、翻译腔，理顺主语、术语和段落，保留原意和事实 | 无 |
 | `unslop-ui` | 把「一看就是 AI 生成」的界面改成有自己性格的设计：先审出 slop，定方向，再按间距、颜色、图标、文案、字体、布局、细节、画面、动效九遍改。可拍网页快照、可出 10 秒 story 视频。本地加了一份审美参考 `references/recent.md`（[recent.design](https://recent.design) 精选作品的共同做法）和拉取最新精选的 `scripts/recent.mjs`。原作者 [Damir Sokolovsky](https://github.com/heydamir/unslop)，CC BY 4.0 | 无；快照和视频要 Playwright + Chromium，视频还要 ffmpeg |
@@ -21,7 +22,7 @@
 
 | 类别 | `~/.agents/skills/<name>` 是什么 | 怎么更新 | 现在有 |
 |---|---|---|---|
-| `links` | 软链到本地仓库（相对路径指本仓库，`~/` 指 home） | 改仓库就生效 | 本仓库 8 个、storyforge |
+| `links` | 软链到本地仓库（相对路径指本仓库，`~/` 指 home） | 改仓库就生效 | 本仓库 9 个、storyforge |
 | `remote` | skills CLI 从 GitHub / 网站拷来的副本 | `update` | skill-creator、auday、lark-doc、lark-shared、[NSH](https://nsh.dev) 官方的 nsh 和 nsh-design-guides（开发指南与设计规范，来自 [longbridge/nsh](https://github.com/longbridge/nsh/tree/main/skills)）、[pstack](https://github.com/cursor/plugins/tree/main/pstack) 里的 bro |
 | `external` | 别的工具自己装的（值写着装法） | 那个工具自己管 | colab-operator、ego-browser、wayne-herdr-mods |
 

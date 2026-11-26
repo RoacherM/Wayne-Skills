@@ -1,0 +1,96 @@
+#!/usr/bin/env python3
+"""herd-post <project> <author> <text...|->
+
+Append {seq, time, agent, text} to <project>/board.jsonl using fcntl.flock
+(works natively on macOS and Linux without util-linux flock) and print the new seq.
+<project>: a path, or a bare name resolved under $HERD_ROOT (default ~/herd).
+Text "-" reads the post body verbatim from stdin (safe for quotes, $ and newlines over ssh).
+"""
+import datetime
+import fcntl
+import json
+import os
+import signal
+import sys
+
+
+def resolve_project_dir(project: str) -> str:
+    if project.startswith(("/", "./", "../")) or project == ".":
+        return os.path.abspath(project)
+    if project == "~" or project.startswith("~/"):
+        return os.path.abspath(os.path.expanduser(project))
+    root = os.path.expanduser(os.environ.get("HERD_ROOT", "~/herd"))
+    return os.path.abspath(os.path.join(root, project))
+
+
+def read_max_seq(board_path: str) -> int:
+    seq = 0
+    if not os.path.exists(board_path):
+        return 0
+    with open(board_path, encoding="utf-8") as fh:
+        for raw in fh:
+            line = raw.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+                seq = max(seq, int(rec.get("seq", 0)))
+            except (json.JSONDecodeError, ValueError, TypeError, AttributeError):
+                continue
+    return seq
+
+
+def _on_alarm(_signum: int, _frame: object) -> None:
+    raise TimeoutError("lock timeout")
+
+
+def append_post(project_dir: str, author: str, text: str, lock_timeout: int = 30) -> int:
+    os.makedirs(project_dir, exist_ok=True)
+    lock_path = os.path.join(project_dir, ".board.lock")
+    board_path = os.path.join(project_dir, "board.jsonl")
+    prev_handler = signal.signal(signal.SIGALRM, _on_alarm)
+    try:
+        with open(lock_path, "a+", encoding="utf-8") as lock_fh:
+            signal.alarm(lock_timeout)
+            try:
+                fcntl.flock(lock_fh.fileno(), fcntl.LOCK_EX)
+            finally:
+                signal.alarm(0)
+            seq = read_max_seq(board_path) + 1
+            rec = {
+                "seq": seq,
+                "time": datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "agent": author,
+                "text": text,
+            }
+            with open(board_path, "a", encoding="utf-8") as fh:
+                fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+                fh.flush()
+                os.fsync(fh.fileno())
+            return seq
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, prev_handler)
+
+
+def main(argv: list[str]) -> int:
+    if len(argv) < 3:
+        sys.stderr.write("usage: herd-post <project> <author> <text...|->\n")
+        return 2
+    project, author = argv[0], argv[1]
+    body_args = argv[2:]
+    text = sys.stdin.read() if body_args == ["-"] else " ".join(body_args)
+    if not text:
+        sys.stderr.write("herd-post: empty text\n")
+        return 2
+    try:
+        seq = append_post(resolve_project_dir(project), author, text)
+    except TimeoutError:
+        sys.stderr.write("herd-post: lock timeout\n")
+        return 1
+    sys.stdout.write(f"{seq}\n")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

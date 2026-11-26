@@ -1,0 +1,22 @@
+[
+  {
+    "id": "multi-worker-cross-cli-dispatch",
+    "prompt": "帮我统筹一下这个重构任务：本机用 claude 和 codex 两个 worker 并行改不同模块，cpu2 上再起一个 droid 跑压测，先测一下模型额度，30 分钟截止",
+    "expected_output": "加载 herd skill，先跑 herd-preflight 探测本机 claude / codex 和远端 cpu2 的 droid，写 BRIEF.md（含文件/worktree 边界、机检命令和 30 分钟绝对截止时间）与 roster.json（coordinator.mode 保持默认 notify、checker 指向 machine cpu2），用 hc 启动各 worker 并在公告板派活，最后启动 herd-watch"
+  },
+  {
+    "id": "protect-interactive-coordinator-pane",
+    "prompt": "启动 herd-watch 监控这个多 agent 项目，别在我左屏打字的时候往我窗口里塞提醒",
+    "expected_output": "确认 roster.json 中 coordinator.mode 为默认 notify（不设为 unattended），让 herd-watchd 将 @coordinator 与 deadline/stall/quota 告警写入 alerts.jsonl（可选 HERD_NOTIFY_CMD 弹非侵入通知），绝不对用户交互主窗口调用 hc send"
+  },
+  {
+    "id": "preflight-all-local-clis-distinguish-503",
+    "prompt": "开工前测一下我本机所有 agent CLI 哪个还能用，有一个返回 503 No capacity 要不要直接换掉？",
+    "expected_output": "运行 herd-preflight local --all 探测本机已装的 agy/claude/codex/pi/epi/droid/grok；明确区分 no-capacity（503，临时容量紧张，稍后重试不必换模型）与 quota（额度耗尽，需切备用模型）"
+  },
+  {
+    "id": "acceptance-requires-done-and-checks-not-hc-idle",
+    "prompt": "我看 hc ls 里两个 worker 状态都变成 done 了，可以直接合代码了吗？",
+    "expected_output": "说明 hc 的 done/idle 只表示终端回合停止，不算任务完成；必须检查公告板是否有 @coordinator [done] 帖并由协调者亲手跑通 BRIEF.md 里的所有机检命令（不通过则发 @<name> failed: <原因> 打回，herd-watchd 会自动恢复冷场追踪）；达到评审边界时走 vibe-coding 的 review.sh"
+  }
+]

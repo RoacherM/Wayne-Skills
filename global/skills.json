@@ -1,6 +1,7 @@
 {
   "links": {
     "deslop": "skills/deslop",
+    "herd": "skills/herd",
     "herdr": "skills/herdr",
     "implicit-state-machines": "skills/implicit-state-machines",
     "nowledge-mem": "skills/nowledge-mem",
